@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="ru">
 <head>
@@ -217,7 +218,7 @@
         <div class="f"><label>Категория</label>
           <select id="f-cat" class="input">
             <option value="">Все</option><option>Склад</option><option>Транспорт</option>
-            <option>E-com</option><option>Услуги</option><option>Прочее</option>
+            <option>E-com</option><option>Услуги</option><option>Кредиты, займы</option><option>Прочее</option>
           </select></div>
         <div class="f"><label>Статус</label>
           <select id="f-status" class="input">
@@ -248,15 +249,14 @@
 <div id="upload-overlay" class="overlay hidden">
   <div class="modal">
     <div class="modal-head">
-      <h3 class="serif">Новый договор</h3>
+      <h3 class="serif" id="modal-title">Новый договор</h3>
       <button class="x" id="modal-close">×</button>
     </div>
     <div class="modal-body">
       <div class="grid2">
         <div class="field full">
-          <label>Наше юр. лицо</label>
-          <input id="m-entity" class="input" list="entity-list" placeholder="С каким юр. лицом заключён договор">
-          <datalist id="entity-list"></datalist>
+          <label>Юр. лицо</label>
+          <select id="m-entity" class="input"></select>
         </div>
         <div class="field full">
           <label>Контрагент <span class="req">*</span></label>
@@ -272,7 +272,7 @@
         <div class="field">
           <label>Категория</label>
           <select id="m-cat" class="input">
-            <option>Склад</option><option>Транспорт</option><option>E-com</option><option>Услуги</option><option>Прочее</option>
+            <option>Склад</option><option>Транспорт</option><option>E-com</option><option>Услуги</option><option>Кредиты, займы</option><option>Прочее</option>
           </select>
         </div>
         <div class="field">
@@ -341,10 +341,17 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const TYPE = {client:'Клиент', contractor:'Подрядчик', both:'Оба', other:'Другое'};
 const STAT = {active:'Действует', expired:'Истёк', terminated:'Расторгнут'};
+const ENTITIES = ['ИП ООО "DAILY MAIL"','ИП ООО "NWL OPERATIONS"','DMZ','MTS','NOVEX','GOODSHUB','INNOVATE'];
 const $ = id => document.getElementById(id);
+
+function fillEntities(){
+  $('m-entity').innerHTML = '<option value="">—</option>' + ENTITIES.map(v=>`<option>${esc(v)}</option>`).join('');
+  $('f-entity').innerHTML = '<option value="">Все</option>' + ENTITIES.map(v=>`<option>${esc(v)}</option>`).join('');
+}
 
 /* ---------- AUTH ---------- */
 async function init(){
+  fillEntities();
   const { data:{ session } } = await sb.auth.getSession();
   render(session);
   sb.auth.onAuthStateChange((_e, s) => render(s));
@@ -354,7 +361,6 @@ function render(session){
     $('login-view').classList.add('hidden');
     $('app-view').classList.remove('hidden');
     $('who-email').textContent = session.user.email;
-    loadEntities();
     load();
   } else {
     $('app-view').classList.add('hidden');
@@ -405,22 +411,16 @@ async function load(){
   data.forEach(r => {
     $('dl-'+r.id).onclick = () => download(r);
     $('del-'+r.id).onclick = () => del(r);
+    $('ed-'+r.id).onclick = () => openEdit(r);
+    $('row-'+r.id).ondblclick = (e) => { if(e.target.closest('button')) return; openEdit(r); };
   });
-}
-async function loadEntities(){
-  const { data, error } = await sb.from('contract_archive').select('legal_entity').not('legal_entity','is',null);
-  if(error) return;
-  const set = [...new Set(data.map(r=>r.legal_entity).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
-  $('entity-list').innerHTML = set.map(v=>`<option value="${esc(v)}">`).join('');
-  const fe = $('f-entity'), cur = fe.value;
-  fe.innerHTML = '<option value="">Все</option>' + set.map(v=>`<option ${v===cur?'selected':''}>${esc(v)}</option>`).join('');
 }
 function rowHtml(r){
   const typeB = r.counterparty_type
     ? `<span class="badge ${r.counterparty_type==='client'?'b-client':'b-contractor'}">${TYPE[r.counterparty_type]||r.counterparty_type}</span>` : '';
   const statB = `<span class="badge b-${r.status||'active'}">${STAT[r.status]||r.status||'—'}</span>`;
   const amount = r.amount!=null ? fmt(r.amount)+(r.currency?(' '+r.currency):'') : '<span class="muted">—</span>';
-  return `<tr>
+  return `<tr id="row-${r.id}" title="Двойной клик — редактировать">
     <td class="cp">${esc(r.counterparty)}</td>
     <td>${esc(r.legal_entity)||'<span class="muted">—</span>'}</td>
     <td>${typeB}</td>
@@ -432,6 +432,7 @@ function rowHtml(r){
     <td class="nowrap">${amount}</td>
     <td>${statB}</td>
     <td><div class="row-actions">
+      <button id="ed-${r.id}" class="btn btn-ghost btn-sm">Изменить</button>
       <button id="dl-${r.id}" class="btn btn-sm">Скачать</button>
       <button id="del-${r.id}" class="btn btn-danger">Удалить</button>
     </div></td>
@@ -464,14 +465,43 @@ async function del(r){
   load();
 }
 
-/* ---------- UPLOAD MODAL ---------- */
+/* ---------- UPLOAD / EDIT MODAL ---------- */
 let pickedFile = null;
+let editingRow = null;
 const overlay = $('upload-overlay');
-$('open-upload').onclick = () => { overlay.classList.remove('hidden'); };
+$('open-upload').onclick = () => { resetModal(); overlay.classList.remove('hidden'); };
 function closeModal(){ overlay.classList.add('hidden'); }
 $('modal-close').onclick = closeModal;
 $('modal-cancel').onclick = closeModal;
 overlay.addEventListener('click', e => { if(e.target===overlay) closeModal(); });
+
+function openEdit(r){
+  editingRow = r;
+  $('modal-title').textContent = 'Редактировать договор';
+  // если у старой записи юр.лицо вне списка — добавим временной опцией, чтобы не потерять
+  if(r.legal_entity && !ENTITIES.includes(r.legal_entity)){
+    $('m-entity').insertAdjacentHTML('beforeend', `<option>${esc(r.legal_entity)}</option>`);
+  }
+  $('m-cp').value     = r.counterparty || '';
+  $('m-entity').value = r.legal_entity || '';
+  $('m-type').value   = r.counterparty_type || 'client';
+  $('m-cat').value    = r.category || 'Склад';
+  $('m-num').value    = r.contract_number || '';
+  $('m-status').value = r.status || 'active';
+  $('m-title').value  = r.title || '';
+  $('m-signed').value = r.signed_date || '';
+  $('m-until').value  = r.valid_until || '';
+  $('m-amount').value = r.amount!=null ? r.amount : '';
+  $('m-curr').value   = r.currency || '';
+  $('m-tags').value   = (r.tags||[]).join(', ');
+  $('m-notes').value  = r.notes || '';
+  pickedFile = null; $('m-file').value='';
+  $('file-label').innerHTML = r.file_name
+    ? `<span class="fn">${esc(r.file_name)}</span> &nbsp;·&nbsp; <small>текущий файл · нажмите, чтобы заменить</small>`
+    : `<span class="fn">Выбрать файл</span> &nbsp;·&nbsp; <small>PDF, DOCX, JPG, PNG · до 30 MB</small>`;
+  $('m-msg').className='msg';
+  overlay.classList.remove('hidden');
+}
 
 $('file-drop').onclick = () => $('m-file').click();
 $('m-file').onchange = () => {
@@ -485,21 +515,31 @@ $('modal-save').onclick = async () => {
   const msg = $('m-msg'); msg.className='msg';
   const cp = $('m-cp').value.trim();
   if(!cp){ msg.className='msg err'; msg.textContent='Укажите контрагента.'; return; }
-  if(!pickedFile){ msg.className='msg err'; msg.textContent='Выберите файл договора.'; return; }
-  if(pickedFile.size > 31457280){ msg.className='msg err'; msg.textContent='Файл больше 30 MB.'; return; }
+  if(!editingRow && !pickedFile){ msg.className='msg err'; msg.textContent='Выберите файл договора.'; return; }
+  if(pickedFile && pickedFile.size > 31457280){ msg.className='msg err'; msg.textContent='Файл больше 30 MB.'; return; }
 
   const btn = $('modal-save'); btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Сохранение…';
+  let uploadedNewPath = null;
   try{
-    const ext = (pickedFile.name.split('.').pop()||'bin').toLowerCase();
-    const path = `${crypto.randomUUID()}.${ext}`;
-    const up = await sb.storage.from('contracts').upload(path, pickedFile, { contentType: pickedFile.type || undefined });
-    if(up.error) throw up.error;
+    let file_path = editingRow ? editingRow.file_path : null;
+    let file_name = editingRow ? editingRow.file_name : null;
+    let file_size = editingRow ? editingRow.file_size : null;
+    let mime_type = editingRow ? editingRow.mime_type : null;
+
+    if(pickedFile){
+      const ext = (pickedFile.name.split('.').pop()||'bin').toLowerCase();
+      const newPath = `${crypto.randomUUID()}.${ext}`;
+      const up = await sb.storage.from('contracts').upload(newPath, pickedFile, { contentType: pickedFile.type || undefined });
+      if(up.error) throw up.error;
+      uploadedNewPath = newPath;
+      file_path = newPath; file_name = pickedFile.name; file_size = pickedFile.size; mime_type = pickedFile.type || null;
+    }
 
     const tags = $('m-tags').value.split(',').map(s=>s.trim()).filter(Boolean);
     const rec = {
       counterparty: cp,
-      legal_entity: $('m-entity').value.trim() || null,
+      legal_entity: $('m-entity').value || null,
       counterparty_type: $('m-type').value,
       contract_number: $('m-num').value.trim() || null,
       title: $('m-title').value.trim() || null,
@@ -511,25 +551,35 @@ $('modal-save').onclick = async () => {
       status: $('m-status').value,
       tags,
       notes: $('m-notes').value.trim() || null,
-      file_path: path,
-      file_name: pickedFile.name,
-      file_size: pickedFile.size,
-      mime_type: pickedFile.type || null
+      file_path, file_name, file_size, mime_type
     };
-    const ins = await sb.from('contract_archive').insert(rec);
-    if(ins.error){ await sb.storage.from('contracts').remove([path]); throw ins.error; }
 
-    msg.className='msg ok'; msg.textContent='Договор сохранён.';
-    setTimeout(()=>{ closeModal(); resetModal(); loadEntities(); load(); }, 650);
+    if(editingRow){
+      const oldPath = editingRow.file_path;
+      const { error } = await sb.from('contract_archive').update(rec).eq('id', editingRow.id);
+      if(error) throw error;
+      if(uploadedNewPath && oldPath && oldPath!==uploadedNewPath){
+        await sb.storage.from('contracts').remove([oldPath]);
+      }
+    } else {
+      const ins = await sb.from('contract_archive').insert(rec);
+      if(ins.error) throw ins.error;
+    }
+
+    msg.className='msg ok'; msg.textContent = editingRow ? 'Изменения сохранены.' : 'Договор сохранён.';
+    setTimeout(()=>{ closeModal(); resetModal(); load(); }, 650);
   }catch(e){
+    if(uploadedNewPath){ try{ await sb.storage.from('contracts').remove([uploadedNewPath]); }catch(_){} }
     msg.className='msg err'; msg.textContent = 'Ошибка: ' + (e.message||e);
   }finally{
     btn.disabled = false; btn.textContent = 'Сохранить';
   }
 };
 function resetModal(){
-  ['m-cp','m-entity','m-num','m-title','m-signed','m-until','m-amount','m-tags','m-notes'].forEach(id=>$(id).value='');
-  $('m-type').value='client'; $('m-cat').value='Склад'; $('m-status').value='active'; $('m-curr').value='';
+  editingRow = null;
+  $('modal-title').textContent = 'Новый договор';
+  ['m-cp','m-num','m-title','m-signed','m-until','m-amount','m-tags','m-notes'].forEach(id=>$(id).value='');
+  $('m-entity').value=''; $('m-type').value='client'; $('m-cat').value='Склад'; $('m-status').value='active'; $('m-curr').value='';
   pickedFile=null; $('m-file').value='';
   $('file-label').innerHTML = `<span class="fn">Выбрать файл</span> &nbsp;·&nbsp; <small>PDF, DOCX, JPG, PNG · до 30 MB</small>`;
   $('m-msg').className='msg';
