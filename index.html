@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Архив договоров — Antria</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f4f1ea;
+    --paper-2:#eae5d9;
+    --card:#fbfaf6;
+    --ink:#1c1b18;
+    --ink-soft:#5b574e;
+    --line:#d8d2c4;
+    --accent:#15564a;       /* deep forest */
+    --accent-soft:#e2ece8;
+    --amber:#a8641b;
+    --red:#9b2c2c;
+    --red-soft:#f3e2e0;
+    --shadow:0 1px 2px rgba(28,27,24,.06),0 8px 28px rgba(28,27,24,.07);
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:"Hanken Grotesk",sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(circle at 12% 8%,rgba(21,86,74,.05),transparent 40%),
+                     radial-gradient(circle at 88% 92%,rgba(168,100,27,.05),transparent 42%);
+    min-height:100vh;
+  }
+  .serif{font-family:"Fraunces",serif}
+  button{font-family:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit}
+  .hidden{display:none!important}
+
+  /* ---------- LOGIN ---------- */
+  #login-view{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+  }
+  .login-card{
+    width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);box-shadow:var(--shadow);padding:40px 36px;
+    animation:rise .6s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .brand{display:flex;align-items:center;gap:11px;margin-bottom:4px}
+  .brand-mark{width:34px;height:34px;border-radius:9px;background:var(--accent);
+    display:grid;place-items:center;color:#f4f1ea;font-family:"Fraunces";font-weight:900;font-size:19px}
+  .brand-name{font-weight:700;letter-spacing:.02em}
+  .login-card h1{font-family:"Fraunces";font-weight:600;font-size:30px;line-height:1.1;margin:22px 0 6px}
+  .login-card p.sub{color:var(--ink-soft);font-size:14px;margin:0 0 26px}
+  label.fld{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);
+    text-transform:uppercase;letter-spacing:.06em;margin:0 0 6px}
+  .input{
+    width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;
+    background:var(--paper);font-size:15px;color:var(--ink);transition:border-color .15s,box-shadow .15s;
+  }
+  .input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .btn{
+    border:none;border-radius:10px;padding:12px 18px;font-size:15px;font-weight:600;
+    background:var(--accent);color:#f4f1ea;transition:transform .08s,filter .15s;
+  }
+  .btn:hover{filter:brightness(1.08)}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .btn-block{width:100%;margin-top:8px}
+  .btn-ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+  .btn-ghost:hover{background:var(--paper);filter:none}
+  .btn-danger{background:transparent;color:var(--red);border:1px solid var(--red-soft);padding:7px 11px;font-size:13px}
+  .btn-danger:hover{background:var(--red-soft);filter:none}
+  .btn-sm{padding:7px 13px;font-size:13px;border-radius:8px}
+  .msg{font-size:13.5px;margin-top:14px;padding:10px 12px;border-radius:9px;display:none}
+  .msg.err{display:block;background:var(--red-soft);color:var(--red)}
+  .msg.ok{display:block;background:var(--accent-soft);color:var(--accent)}
+
+  /* ---------- APP ---------- */
+  header.top{
+    background:var(--card);border-bottom:1px solid var(--line);
+    padding:16px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px;
+    position:sticky;top:0;z-index:20;
+  }
+  header.top .who{display:flex;align-items:center;gap:14px;font-size:13.5px;color:var(--ink-soft)}
+  .wrap{max-width:1240px;margin:0 auto;padding:26px}
+  .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:20px;flex-wrap:wrap}
+  .page-head h2{font-family:"Fraunces";font-weight:600;font-size:34px;margin:0;line-height:1}
+  .page-head .count{color:var(--ink-soft);font-size:14px;margin-top:7px}
+
+  .toolbar{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;box-shadow:var(--shadow);margin-bottom:20px;
+  }
+  .search-row{display:flex;gap:10px;margin-bottom:13px}
+  .search-row .input{flex:1}
+  .filters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+  .filters .f label{display:block;font-size:11px;font-weight:600;color:var(--ink-soft);
+    text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+  .filters .input{padding:9px 11px;font-size:14px}
+  .filters-foot{display:flex;justify-content:flex-end;margin-top:12px}
+
+  .table-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden}
+  .tscroll{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px;min-width:880px}
+  thead th{
+    text-align:left;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--ink-soft);padding:13px 14px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--paper-2)
+  }
+  tbody td{padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr{transition:background .12s}
+  tbody tr:hover{background:var(--paper)}
+  .cp{font-weight:600}
+  .muted{color:var(--ink-soft)}
+  .nowrap{white-space:nowrap}
+  .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+  .b-client{background:var(--accent-soft);color:var(--accent)}
+  .b-contractor{background:#efe6d6;color:var(--amber)}
+  .b-active{background:var(--accent-soft);color:var(--accent)}
+  .b-expired{background:#ece9e1;color:var(--ink-soft)}
+  .b-terminated{background:var(--red-soft);color:var(--red)}
+  .row-actions{display:flex;gap:7px;justify-content:flex-end}
+  .empty{padding:54px 20px;text-align:center;color:var(--ink-soft)}
+  .empty .serif{font-size:21px;color:var(--ink);display:block;margin-bottom:6px}
+
+  /* ---------- MODAL ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(28,27,24,.42);backdrop-filter:blur(2px);
+    display:flex;align-items:flex-start;justify-content:center;padding:40px 18px;z-index:40;overflow:auto}
+  .modal{background:var(--card);border-radius:var(--radius);width:100%;max-width:660px;
+    box-shadow:0 24px 70px rgba(28,27,24,.28);animation:rise .35s cubic-bezier(.2,.7,.3,1) both}
+  .modal-head{padding:22px 26px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+  .modal-head h3{font-family:"Fraunces";font-weight:600;font-size:23px;margin:0}
+  .x{background:none;border:none;font-size:24px;color:var(--ink-soft);line-height:1;padding:2px 6px;border-radius:7px}
+  .x:hover{background:var(--paper);color:var(--ink)}
+  .modal-body{padding:22px 26px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px}
+  .grid2 .full{grid-column:1/-1}
+  .field{margin-bottom:0}
+  .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);
+    text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+  .field .input{padding:10px 12px;font-size:14.5px}
+  textarea.input{resize:vertical;min-height:62px}
+  .file-drop{border:1.5px dashed var(--line);border-radius:11px;padding:18px;text-align:center;
+    background:var(--paper);transition:border-color .15s,background .15s;cursor:pointer}
+  .file-drop:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .file-drop .fn{font-weight:600;color:var(--accent)}
+  .file-drop small{color:var(--ink-soft)}
+  .modal-foot{padding:18px 26px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px;align-items:center}
+  .req{color:var(--red)}
+  .spinner{width:15px;height:15px;border:2px solid rgba(244,241,234,.4);border-top-color:#f4f1ea;
+    border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .loading-cell{padding:40px;text-align:center;color:var(--ink-soft)}
+
+  @media(max-width:880px){
+    .filters{grid-template-columns:1fr 1fr}
+    .grid2{grid-template-columns:1fr}
+    .page-head h2{font-size:27px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login-view">
+  <div class="login-card">
+    <div class="brand"><div class="brand-mark">A</div><span class="brand-name">Antria</span></div>
+    <h1 class="serif">Архив договоров</h1>
+    <p class="sub">Войдите, чтобы искать и загружать документы.</p>
+    <div style="margin-bottom:14px">
+      <label class="fld" for="li-email">Email</label>
+      <input id="li-email" class="input" type="email" autocomplete="username" placeholder="you@antria.uz">
+    </div>
+    <div>
+      <label class="fld" for="li-pass">Пароль</label>
+      <input id="li-pass" class="input" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button id="li-btn" class="btn btn-block">Войти</button>
+    <div id="li-msg" class="msg"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app-view" class="hidden">
+  <header class="top">
+    <div class="brand"><div class="brand-mark">A</div><span class="brand-name">Antria · Архив</span></div>
+    <div class="who"><span id="who-email"></span><button id="logout-btn" class="btn btn-ghost btn-sm">Выйти</button></div>
+  </header>
+
+  <div class="wrap">
+    <div class="page-head">
+      <div>
+        <h2 class="serif">Договоры</h2>
+        <div class="count" id="count">—</div>
+      </div>
+      <button id="open-upload" class="btn">+ Загрузить договор</button>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-row">
+        <input id="q" class="input" type="text" placeholder="Поиск: контрагент, номер, предмет, текст…">
+        <button id="search-btn" class="btn">Найти</button>
+      </div>
+      <div class="filters">
+        <div class="f"><label>Юр. лицо</label>
+          <select id="f-entity" class="input"><option value="">Все</option></select></div>
+        <div class="f"><label>Тип</label>
+          <select id="f-type" class="input">
+            <option value="">Все</option><option value="client">Клиент</option>
+            <option value="contractor">Подрядчик</option><option value="both">Оба</option><option value="other">Другое</option>
+          </select></div>
+        <div class="f"><label>Категория</label>
+          <select id="f-cat" class="input">
+            <option value="">Все</option><option>Склад</option><option>Транспорт</option>
+            <option>E-com</option><option>Услуги</option><option>Прочее</option>
+          </select></div>
+        <div class="f"><label>Статус</label>
+          <select id="f-status" class="input">
+            <option value="">Все</option><option value="active">Действует</option>
+            <option value="expired">Истёк</option><option value="terminated">Расторгнут</option>
+          </select></div>
+        <div class="f"><label>Подписан с</label><input id="f-from" class="input" type="date"></div>
+        <div class="f"><label>Подписан по</label><input id="f-to" class="input" type="date"></div>
+      </div>
+      <div class="filters-foot"><button id="reset-btn" class="btn btn-ghost btn-sm">Сбросить</button></div>
+    </div>
+
+    <div class="table-card">
+      <div class="tscroll">
+        <table>
+          <thead><tr>
+            <th>Контрагент</th><th>Юр. лицо</th><th>Тип</th><th>№</th><th>Предмет</th><th>Категория</th>
+            <th>Подписан</th><th>Действует до</th><th>Сумма</th><th>Статус</th><th></th>
+          </tr></thead>
+          <tbody id="rows"><tr><td colspan="11" class="loading-cell">Загрузка…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ UPLOAD MODAL ============ -->
+<div id="upload-overlay" class="overlay hidden">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 class="serif">Новый договор</h3>
+      <button class="x" id="modal-close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid2">
+        <div class="field full">
+          <label>Наше юр. лицо</label>
+          <input id="m-entity" class="input" list="entity-list" placeholder="С каким юр. лицом заключён договор">
+          <datalist id="entity-list"></datalist>
+        </div>
+        <div class="field full">
+          <label>Контрагент <span class="req">*</span></label>
+          <input id="m-cp" class="input" placeholder="ООО «…»">
+        </div>
+        <div class="field">
+          <label>Тип</label>
+          <select id="m-type" class="input">
+            <option value="client">Клиент</option><option value="contractor">Подрядчик</option>
+            <option value="both">Оба</option><option value="other">Другое</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Категория</label>
+          <select id="m-cat" class="input">
+            <option>Склад</option><option>Транспорт</option><option>E-com</option><option>Услуги</option><option>Прочее</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Номер договора</label>
+          <input id="m-num" class="input" placeholder="ИР-862509/26">
+        </div>
+        <div class="field">
+          <label>Статус</label>
+          <select id="m-status" class="input">
+            <option value="active">Действует</option><option value="expired">Истёк</option><option value="terminated">Расторгнут</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label>Предмет / название</label>
+          <input id="m-title" class="input" placeholder="Ответственное хранение и обработка товара">
+        </div>
+        <div class="field">
+          <label>Дата подписания</label>
+          <input id="m-signed" class="input" type="date">
+        </div>
+        <div class="field">
+          <label>Действует до</label>
+          <input id="m-until" class="input" type="date">
+        </div>
+        <div class="field">
+          <label>Сумма</label>
+          <input id="m-amount" class="input" type="number" step="any" placeholder="0">
+        </div>
+        <div class="field">
+          <label>Валюта</label>
+          <select id="m-curr" class="input">
+            <option value="">—</option><option>UZS</option><option>USD</option><option>EUR</option><option>RUB</option>
+          </select>
+        </div>
+        <div class="field full">
+          <label>Теги (через запятую)</label>
+          <input id="m-tags" class="input" placeholder="бонд, take-or-pay, VAT-inclusive">
+        </div>
+        <div class="field full">
+          <label>Заметки</label>
+          <textarea id="m-notes" class="input" placeholder="Любые примечания для поиска"></textarea>
+        </div>
+        <div class="field full">
+          <label>Файл договора <span class="req">*</span></label>
+          <div class="file-drop" id="file-drop">
+            <div id="file-label"><span class="fn">Выбрать файл</span> &nbsp;·&nbsp; <small>PDF, DOCX, JPG, PNG · до 30 MB</small></div>
+          </div>
+          <input id="m-file" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" class="hidden">
+        </div>
+      </div>
+      <div id="m-msg" class="msg"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="modal-cancel">Отмена</button>
+      <button class="btn" id="modal-save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL = 'https://onsygliokkexvibydkwm.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_ppN9d7oHQ0RJFClet036AA__iTwoaXx';
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const TYPE = {client:'Клиент', contractor:'Подрядчик', both:'Оба', other:'Другое'};
+const STAT = {active:'Действует', expired:'Истёк', terminated:'Расторгнут'};
+const $ = id => document.getElementById(id);
+
+/* ---------- AUTH ---------- */
+async function init(){
+  const { data:{ session } } = await sb.auth.getSession();
+  render(session);
+  sb.auth.onAuthStateChange((_e, s) => render(s));
+}
+function render(session){
+  if(session){
+    $('login-view').classList.add('hidden');
+    $('app-view').classList.remove('hidden');
+    $('who-email').textContent = session.user.email;
+    loadEntities();
+    load();
+  } else {
+    $('app-view').classList.add('hidden');
+    $('login-view').classList.remove('hidden');
+  }
+}
+$('li-btn').onclick = async () => {
+  const email = $('li-email').value.trim();
+  const password = $('li-pass').value;
+  const msg = $('li-msg');
+  msg.className = 'msg';
+  if(!email || !password){ msg.className='msg err'; msg.textContent='Введите email и пароль.'; return; }
+  $('li-btn').disabled = true; $('li-btn').textContent = 'Вход…';
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  $('li-btn').disabled = false; $('li-btn').textContent = 'Войти';
+  if(error){ msg.className='msg err'; msg.textContent = 'Не удалось войти: ' + error.message; }
+};
+$('li-pass').addEventListener('keydown', e => { if(e.key==='Enter') $('li-btn').click(); });
+$('logout-btn').onclick = () => sb.auth.signOut();
+
+/* ---------- LOAD / SEARCH ---------- */
+async function load(){
+  const rows = $('rows');
+  rows.innerHTML = '<tr><td colspan="11" class="loading-cell">Загрузка…</td></tr>';
+  let q = sb.from('contract_archive').select('*');
+
+  const text = $('q').value.trim();
+  if(text) q = q.textSearch('search_tsv', text, { config:'russian', type:'websearch' });
+  if($('f-entity').value) q = q.eq('legal_entity', $('f-entity').value);
+  if($('f-type').value)   q = q.eq('counterparty_type', $('f-type').value);
+  if($('f-cat').value)    q = q.eq('category', $('f-cat').value);
+  if($('f-status').value) q = q.eq('status', $('f-status').value);
+  if($('f-from').value)   q = q.gte('signed_date', $('f-from').value);
+  if($('f-to').value)     q = q.lte('signed_date', $('f-to').value);
+
+  const { data, error } = await q.order('signed_date', { ascending:false, nullsFirst:false }).limit(500);
+
+  if(error){
+    rows.innerHTML = `<tr><td colspan="11" class="loading-cell">Ошибка: ${esc(error.message)}</td></tr>`;
+    $('count').textContent = '—'; return;
+  }
+  $('count').textContent = data.length + ' ' + plural(data.length, ['договор','договора','договоров']);
+  if(!data.length){
+    rows.innerHTML = `<tr><td colspan="11"><div class="empty"><span class="serif">Ничего не найдено</span>Измените фильтры или загрузите первый договор.</div></td></tr>`;
+    return;
+  }
+  rows.innerHTML = data.map(rowHtml).join('');
+  data.forEach(r => {
+    $('dl-'+r.id).onclick = () => download(r);
+    $('del-'+r.id).onclick = () => del(r);
+  });
+}
+async function loadEntities(){
+  const { data, error } = await sb.from('contract_archive').select('legal_entity').not('legal_entity','is',null);
+  if(error) return;
+  const set = [...new Set(data.map(r=>r.legal_entity).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+  $('entity-list').innerHTML = set.map(v=>`<option value="${esc(v)}">`).join('');
+  const fe = $('f-entity'), cur = fe.value;
+  fe.innerHTML = '<option value="">Все</option>' + set.map(v=>`<option ${v===cur?'selected':''}>${esc(v)}</option>`).join('');
+}
+function rowHtml(r){
+  const typeB = r.counterparty_type
+    ? `<span class="badge ${r.counterparty_type==='client'?'b-client':'b-contractor'}">${TYPE[r.counterparty_type]||r.counterparty_type}</span>` : '';
+  const statB = `<span class="badge b-${r.status||'active'}">${STAT[r.status]||r.status||'—'}</span>`;
+  const amount = r.amount!=null ? fmt(r.amount)+(r.currency?(' '+r.currency):'') : '<span class="muted">—</span>';
+  return `<tr>
+    <td class="cp">${esc(r.counterparty)}</td>
+    <td>${esc(r.legal_entity)||'<span class="muted">—</span>'}</td>
+    <td>${typeB}</td>
+    <td class="nowrap">${esc(r.contract_number)||'<span class="muted">—</span>'}</td>
+    <td>${esc(r.title)||'<span class="muted">—</span>'}</td>
+    <td class="nowrap">${esc(r.category)||'<span class="muted">—</span>'}</td>
+    <td class="nowrap">${r.signed_date||'<span class="muted">—</span>'}</td>
+    <td class="nowrap">${r.valid_until||'<span class="muted">—</span>'}</td>
+    <td class="nowrap">${amount}</td>
+    <td>${statB}</td>
+    <td><div class="row-actions">
+      <button id="dl-${r.id}" class="btn btn-sm">Скачать</button>
+      <button id="del-${r.id}" class="btn btn-danger">Удалить</button>
+    </div></td>
+  </tr>`;
+}
+$('search-btn').onclick = load;
+$('q').addEventListener('keydown', e => { if(e.key==='Enter') load(); });
+['f-entity','f-type','f-cat','f-status','f-from','f-to'].forEach(id => $(id).addEventListener('change', load));
+$('reset-btn').onclick = () => {
+  ['q','f-from','f-to'].forEach(id=>$(id).value='');
+  ['f-entity','f-type','f-cat','f-status'].forEach(id=>$(id).value='');
+  load();
+};
+
+/* ---------- DOWNLOAD ---------- */
+async function download(r){
+  if(!r.file_path){ alert('У записи нет прикреплённого файла.'); return; }
+  const { data, error } = await sb.storage.from('contracts')
+    .createSignedUrl(r.file_path, 60, { download: r.file_name || true });
+  if(error){ alert('Не удалось получить файл: ' + error.message); return; }
+  window.open(data.signedUrl, '_blank');
+}
+
+/* ---------- DELETE ---------- */
+async function del(r){
+  if(!confirm(`Удалить договор «${r.counterparty}»? Файл тоже будет удалён.`)) return;
+  if(r.file_path) await sb.storage.from('contracts').remove([r.file_path]);
+  const { error } = await sb.from('contract_archive').delete().eq('id', r.id);
+  if(error){ alert('Ошибка удаления: ' + error.message); return; }
+  load();
+}
+
+/* ---------- UPLOAD MODAL ---------- */
+let pickedFile = null;
+const overlay = $('upload-overlay');
+$('open-upload').onclick = () => { overlay.classList.remove('hidden'); };
+function closeModal(){ overlay.classList.add('hidden'); }
+$('modal-close').onclick = closeModal;
+$('modal-cancel').onclick = closeModal;
+overlay.addEventListener('click', e => { if(e.target===overlay) closeModal(); });
+
+$('file-drop').onclick = () => $('m-file').click();
+$('m-file').onchange = () => {
+  pickedFile = $('m-file').files[0] || null;
+  $('file-label').innerHTML = pickedFile
+    ? `<span class="fn">${esc(pickedFile.name)}</span> &nbsp;·&nbsp; <small>${(pickedFile.size/1048576).toFixed(2)} MB</small>`
+    : `<span class="fn">Выбрать файл</span> &nbsp;·&nbsp; <small>PDF, DOCX, JPG, PNG · до 30 MB</small>`;
+};
+
+$('modal-save').onclick = async () => {
+  const msg = $('m-msg'); msg.className='msg';
+  const cp = $('m-cp').value.trim();
+  if(!cp){ msg.className='msg err'; msg.textContent='Укажите контрагента.'; return; }
+  if(!pickedFile){ msg.className='msg err'; msg.textContent='Выберите файл договора.'; return; }
+  if(pickedFile.size > 31457280){ msg.className='msg err'; msg.textContent='Файл больше 30 MB.'; return; }
+
+  const btn = $('modal-save'); btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Сохранение…';
+  try{
+    const ext = (pickedFile.name.split('.').pop()||'bin').toLowerCase();
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const up = await sb.storage.from('contracts').upload(path, pickedFile, { contentType: pickedFile.type || undefined });
+    if(up.error) throw up.error;
+
+    const tags = $('m-tags').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const rec = {
+      counterparty: cp,
+      legal_entity: $('m-entity').value.trim() || null,
+      counterparty_type: $('m-type').value,
+      contract_number: $('m-num').value.trim() || null,
+      title: $('m-title').value.trim() || null,
+      category: $('m-cat').value,
+      signed_date: $('m-signed').value || null,
+      valid_until: $('m-until').value || null,
+      amount: $('m-amount').value ? Number($('m-amount').value) : null,
+      currency: $('m-curr').value || null,
+      status: $('m-status').value,
+      tags,
+      notes: $('m-notes').value.trim() || null,
+      file_path: path,
+      file_name: pickedFile.name,
+      file_size: pickedFile.size,
+      mime_type: pickedFile.type || null
+    };
+    const ins = await sb.from('contract_archive').insert(rec);
+    if(ins.error){ await sb.storage.from('contracts').remove([path]); throw ins.error; }
+
+    msg.className='msg ok'; msg.textContent='Договор сохранён.';
+    setTimeout(()=>{ closeModal(); resetModal(); loadEntities(); load(); }, 650);
+  }catch(e){
+    msg.className='msg err'; msg.textContent = 'Ошибка: ' + (e.message||e);
+  }finally{
+    btn.disabled = false; btn.textContent = 'Сохранить';
+  }
+};
+function resetModal(){
+  ['m-cp','m-entity','m-num','m-title','m-signed','m-until','m-amount','m-tags','m-notes'].forEach(id=>$(id).value='');
+  $('m-type').value='client'; $('m-cat').value='Склад'; $('m-status').value='active'; $('m-curr').value='';
+  pickedFile=null; $('m-file').value='';
+  $('file-label').innerHTML = `<span class="fn">Выбрать файл</span> &nbsp;·&nbsp; <small>PDF, DOCX, JPG, PNG · до 30 MB</small>`;
+  $('m-msg').className='msg';
+}
+
+/* ---------- helpers ---------- */
+function esc(s){ return s==null ? '' : String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmt(n){ return Number(n).toLocaleString('ru-RU'); }
+function plural(n,f){ const m=n%100,d=n%10; return m>=11&&m<=14?f[2]:d===1?f[0]:d>=2&&d<=4?f[1]:f[2]; }
+
+init();
+</script>
+</body>
+</html>
