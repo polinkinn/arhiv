@@ -158,10 +158,40 @@
   @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
   .loading-cell{padding:40px;text-align:center;color:var(--ink-soft)}
 
+  /* tabs */
+  .tabs{display:inline-flex;gap:4px;background:var(--paper-2);border:1px solid var(--line);border-radius:11px;padding:4px;margin-bottom:20px}
+  .tab{border:none;background:transparent;padding:8px 18px;border-radius:8px;font-size:14px;font-weight:600;color:var(--ink-soft)}
+  .tab.active{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+  /* analytics */
+  .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow)}
+  .stat .v{font-family:"Fraunces";font-weight:600;font-size:34px;line-height:1}
+  .stat .l{color:var(--ink-soft);font-size:13px;margin-top:6px}
+  .stat.warn .v{color:var(--amber)} .stat.bad .v{color:var(--red)} .stat.good .v{color:var(--accent)}
+  .an-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card-block{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);margin-bottom:16px}
+  .block-title{font-family:"Fraunces";font-weight:600;font-size:18px;margin:0 0 14px}
+  .bar-row{display:grid;grid-template-columns:150px 1fr 38px;align-items:center;gap:10px;margin-bottom:9px;font-size:13.5px}
+  .bar-row .bl{color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bar-track{background:var(--paper-2);border-radius:6px;height:16px;overflow:hidden}
+  .bar-fill{height:100%;background:var(--accent);border-radius:6px;min-width:2px}
+  .bar-row .bn{text-align:right;font-weight:600}
+  .exp-row{display:grid;grid-template-columns:12px 1fr auto auto;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .exp-row:last-child{border-bottom:none}
+  .dot{width:10px;height:10px;border-radius:50%}
+  .dot.r{background:var(--red)} .dot.a{background:var(--amber)} .dot.g{background:var(--accent)}
+  .exp-cp{font-weight:600}
+  .exp-meta{color:var(--ink-soft);font-size:13px}
+  .exp-days{font-weight:600;white-space:nowrap}
+  .quality{color:var(--ink-soft);font-size:13.5px;padding:2px 2px 8px}
+
   @media(max-width:880px){
     .filters{grid-template-columns:1fr 1fr}
     .grid2{grid-template-columns:1fr}
     .page-head h2{font-size:27px}
+    .stat-grid{grid-template-columns:1fr 1fr}
+    .an-cards{grid-template-columns:1fr}
+    .bar-row{grid-template-columns:110px 1fr 34px}
   }
 </style>
 </head>
@@ -194,6 +224,11 @@
   </header>
 
   <div class="wrap">
+    <div class="tabs">
+      <button id="tab-co" class="tab active">Договоры</button>
+      <button id="tab-an" class="tab">Аналитика</button>
+    </div>
+    <div id="view-contracts">
     <div class="page-head">
       <div>
         <h2 class="serif">Договоры</h2>
@@ -241,6 +276,18 @@
           <tbody id="rows"><tr><td colspan="11" class="loading-cell">Загрузка…</td></tr></tbody>
         </table>
       </div>
+    </div>
+    </div><!-- /view-contracts -->
+
+    <div id="view-analytics" class="hidden">
+      <div class="page-head"><div><h2 class="serif">Аналитика</h2><div class="count" id="an-sub">по данным архива</div></div></div>
+      <div id="an-stats" class="stat-grid"></div>
+      <div class="an-cards">
+        <div class="card-block"><h3 class="block-title">По юр. лицу</h3><div id="an-entity"></div></div>
+        <div class="card-block"><h3 class="block-title">По категории</h3><div id="an-category"></div></div>
+      </div>
+      <div class="card-block"><h3 class="block-title">Ближайшие окончания и просрочки</h3><div id="an-expiry"></div></div>
+      <div id="an-quality" class="quality"></div>
     </div>
   </div>
 </div>
@@ -446,6 +493,76 @@ $('reset-btn').onclick = () => {
   ['f-entity','f-type','f-cat','f-status'].forEach(id=>$(id).value='');
   load();
 };
+
+/* ---------- TABS ---------- */
+$('tab-co').onclick = () => showTab('co');
+$('tab-an').onclick = () => showTab('an');
+function showTab(t){
+  const an = t==='an';
+  $('view-analytics').classList.toggle('hidden', !an);
+  $('view-contracts').classList.toggle('hidden', an);
+  $('tab-an').classList.toggle('active', an);
+  $('tab-co').classList.toggle('active', !an);
+  if(an) renderAnalytics();
+}
+
+/* ---------- ANALYTICS ---------- */
+function daysUntil(d){ const t=new Date(); t.setHours(0,0,0,0); const x=new Date(d+'T00:00:00'); return Math.round((x-t)/86400000); }
+function stat(v,l,cls){ return `<div class="stat ${cls}"><div class="v">${v}</div><div class="l">${l}</div></div>`; }
+function groupCount(data,key){
+  const m=new Map();
+  data.forEach(r=>{ const k=(r[key]&&String(r[key]).trim())||'— не указано'; m.set(k,(m.get(k)||0)+1); });
+  return [...m.entries()].sort((a,b)=>b[1]-a[1]);
+}
+function barChart(pairs){
+  if(!pairs.length) return '<div class="exp-meta">Нет данных.</div>';
+  const max=Math.max(...pairs.map(p=>p[1]));
+  return pairs.map(([k,n])=>`<div class="bar-row">
+    <div class="bl" title="${esc(k)}">${esc(k)}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${Math.round(n/max*100)}%"></div></div>
+    <div class="bn">${n}</div></div>`).join('');
+}
+function expRow(r){
+  const d=daysUntil(r.valid_until);
+  const cls = d<=30 ? 'r' : d<=90 ? 'a' : 'g';
+  const txt = d<0 ? `просрочен на ${-d} дн.` : d===0 ? 'сегодня' : `через ${d} дн.`;
+  const meta = [esc(r.legal_entity), r.contract_number?('№ '+esc(r.contract_number)):''].filter(Boolean).join(' · ');
+  return `<div class="exp-row">
+    <span class="dot ${cls}"></span>
+    <span><span class="exp-cp">${esc(r.counterparty)}</span>${meta?(' <span class="exp-meta">'+meta+'</span>'):''}</span>
+    <span class="exp-meta">${r.valid_until}</span>
+    <span class="exp-days">${txt}</span></div>`;
+}
+async function renderAnalytics(){
+  $('an-stats').innerHTML = '<div class="stat"><div class="v">…</div><div class="l">Загрузка</div></div>';
+  const { data, error } = await sb.from('contract_archive')
+    .select('counterparty,legal_entity,category,counterparty_type,status,valid_until,amount,contract_number').limit(2000);
+  if(error){ $('an-stats').innerHTML = `<div class="stat bad"><div class="v">!</div><div class="l">Ошибка: ${esc(error.message)}</div></div>`; return; }
+
+  const open = r => r.status!=='terminated';
+  const total = data.length;
+  const active = data.filter(r=>r.status==='active').length;
+  const soon = data.filter(r=>r.valid_until && open(r) && daysUntil(r.valid_until)>=0 && daysUntil(r.valid_until)<=90).length;
+  const overdue = data.filter(r=>r.valid_until && open(r) && daysUntil(r.valid_until)<0).length;
+
+  $('an-stats').innerHTML =
+    stat(total,'Всего договоров','') +
+    stat(active,'Действующих','good') +
+    stat(soon,'Истекает ≤ 90 дней','warn') +
+    stat(overdue,'Просрочено (дата прошла)','bad');
+
+  $('an-entity').innerHTML   = barChart(groupCount(data,'legal_entity'));
+  $('an-category').innerHTML = barChart(groupCount(data,'category'));
+
+  const exp = data.filter(r=>r.valid_until && open(r) && daysUntil(r.valid_until)<=120)
+                  .sort((a,b)=> a.valid_until.localeCompare(b.valid_until)).slice(0,25);
+  $('an-expiry').innerHTML = exp.length ? exp.map(expRow).join('')
+    : '<div class="exp-meta">Нет договоров с близким сроком окончания (в пределах 120 дней).</div>';
+
+  const noDate = data.filter(r=>!r.valid_until).length;
+  const noAmount = data.filter(r=>r.amount==null).length;
+  $('an-quality').innerHTML = `Качество данных: без даты окончания — <b>${noDate}</b>, без суммы — <b>${noAmount}</b> из ${total}.`;
+}
 
 /* ---------- DOWNLOAD ---------- */
 async function download(r){
