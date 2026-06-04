@@ -770,6 +770,22 @@ $('modal-save').onclick = async () => {
   if(!editingRow && !pickedFile){ msg.className='msg err'; msg.textContent='Выберите файл договора.'; return; }
   if(pickedFile && pickedFile.size > 31457280){ msg.className='msg err'; msg.textContent='Файл больше 30 MB.'; return; }
 
+  // проверка на дубль: контрагент + номер + юр. лицо
+  const num = $('m-num').value.trim();
+  const ent = $('m-entity').value;
+  if(num){
+    let dq = sb.from('contract_archive').select('counterparty,contract_number,legal_entity,signed_date')
+      .eq('counterparty', cp).eq('contract_number', num);
+    dq = ent ? dq.eq('legal_entity', ent) : dq.is('legal_entity', null);
+    if(editingRow) dq = dq.neq('id', editingRow.id);
+    const { data: dups } = await dq.limit(1);
+    if(dups && dups.length){
+      const x = dups[0];
+      const ok = confirm(`Похоже, такой договор уже есть:\n${x.counterparty} · № ${x.contract_number}${x.legal_entity?(' · '+x.legal_entity):''}${x.signed_date?(' · '+x.signed_date):''}\n\nВсё равно сохранить?`);
+      if(!ok) return;
+    }
+  }
+
   const btn = $('modal-save'); btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Сохранение…';
   let uploadedNewPath = null;
