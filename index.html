@@ -382,7 +382,7 @@
         <div class="field">
           <label>Валюта</label>
           <select id="m-curr" class="input">
-            <option value="">—</option><option>UZS</option><option>USD</option><option>EUR</option><option>RUB</option>
+            <option value="">—</option><option>UZS</option><option>USD</option><option>EUR</option><option>RUB</option><option>AED</option>
           </select>
         </div>
         <div class="field full">
@@ -623,6 +623,19 @@ $('m-rtype').onchange = () => {
 };
 $('m-cp').addEventListener('input', () => { if($('m-rtype').value==='addendum') loadParents(editingRow?.id); });
 
+// После сохранения основного договора — предложить привязать осиротевшие ДС этого контрагента
+async function offerLinkOrphans(mainId, counterparty){
+  if(!counterparty) return;
+  const { data } = await sb.from('contract_archive')
+    .select('id,contract_number,title,signed_date')
+    .eq('record_type','addendum').is('parent_id', null).eq('counterparty', counterparty);
+  if(!data || !data.length) return;
+  const list = data.map(d => '• ' + (d.contract_number || d.title || d.signed_date || 'ДС')).join('\n');
+  const ok = confirm(`У контрагента «${counterparty}» есть допсоглашения без основного договора (${data.length}):\n\n${list}\n\nПривязать их к этому договору?`);
+  if(!ok) return;
+  await sb.from('contract_archive').update({ parent_id: mainId }).in('id', data.map(d=>d.id));
+}
+
 /* ---------- ANALYTICS ---------- */
 function daysUntil(d){ const t=new Date(); t.setHours(0,0,0,0); const x=new Date(d+'T00:00:00'); return Math.round((x-t)/86400000); }
 function stat(v,l,cls){ return `<div class="stat ${cls}"><div class="v">${v}</div><div class="l">${l}</div></div>`; }
@@ -804,10 +817,12 @@ $('modal-save').onclick = async () => {
         await sb.storage.from('contracts').remove([oldPath]);
       }
       await logAudit('update', rec, editingRow.id);
+      if(rec.record_type === 'main') await offerLinkOrphans(editingRow.id, cp);
     } else {
       const ins = await sb.from('contract_archive').insert(rec).select('id').single();
       if(ins.error) throw ins.error;
       await logAudit('create', rec, ins.data?.id);
+      if(rec.record_type === 'main') await offerLinkOrphans(ins.data?.id, cp);
     }
 
     msg.className='msg ok'; msg.textContent = editingRow ? 'Изменения сохранены.' : 'Договор сохранён.';
