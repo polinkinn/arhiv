@@ -603,16 +603,25 @@ async function logAudit(action, rec, id){
   }catch(_){}
 }
 async function loadParents(excludeId){
-  const { data } = await sb.from('contract_archive')
+  const cp = $('m-cp').value.trim();
+  let q = sb.from('contract_archive')
     .select('id,counterparty,contract_number,signed_date')
-    .eq('record_type','main').order('counterparty').limit(500);
+    .eq('record_type','main');
+  if(cp) q = q.eq('counterparty', cp);
+  const { data } = await q.order('signed_date',{ascending:false}).limit(200);
   const opts = (data||[]).filter(c=>c.id!==excludeId)
-    .map(c=>`<option value="${c.id}">${esc(c.counterparty)} · ${esc(c.contract_number)||'без №'}${c.signed_date?(' · '+c.signed_date):''}</option>`).join('');
-  $('m-parent').innerHTML = '<option value="">— выберите основной договор —</option>' + opts;
+    .map(c=>`<option value="${c.id}">${esc(c.contract_number)||'без №'}${c.signed_date?(' · '+c.signed_date):''}</option>`).join('');
+  const head = cp
+    ? (opts ? '<option value="">— выберите договор —</option>' : '<option value="">— у этого контрагента нет основных договоров —</option>')
+    : '<option value="">— сначала впишите контрагента —</option>';
+  $('m-parent').innerHTML = head + opts;
 }
 $('m-rtype').onchange = () => {
-  $('parent-field').style.display = $('m-rtype').value==='addendum' ? '' : 'none';
+  const ad = $('m-rtype').value==='addendum';
+  $('parent-field').style.display = ad ? '' : 'none';
+  if(ad) loadParents(editingRow?.id);
 };
+$('m-cp').addEventListener('input', () => { if($('m-rtype').value==='addendum') loadParents(editingRow?.id); });
 
 /* ---------- ANALYTICS ---------- */
 function daysUntil(d){ const t=new Date(); t.setHours(0,0,0,0); const x=new Date(d+'T00:00:00'); return Math.round((x-t)/86400000); }
@@ -704,7 +713,6 @@ overlay.addEventListener('click', e => { if(e.target===overlay) closeModal(); })
 async function openEdit(r){
   editingRow = r;
   $('modal-title').textContent = 'Редактировать договор';
-  await loadParents(r.id);
   // если у старой записи юр.лицо вне списка — добавим временной опцией, чтобы не потерять
   if(r.legal_entity && !ENTITIES.includes(r.legal_entity)){
     $('m-entity').insertAdjacentHTML('beforeend', `<option>${esc(r.legal_entity)}</option>`);
@@ -713,6 +721,7 @@ async function openEdit(r){
   $('m-entity').value = r.legal_entity || '';
   $('m-rtype').value  = r.record_type || 'main';
   $('parent-field').style.display = ($('m-rtype').value==='addendum') ? '' : 'none';
+  await loadParents(r.id);
   $('m-parent').value = r.parent_id || '';
   $('m-type').value   = r.counterparty_type || 'client';
   $('m-cat').value    = r.category || 'Склад';
