@@ -328,11 +328,13 @@
         </div>
         <div class="field full">
           <label>Контрагент <span class="req">*</span></label>
-          <input id="m-cp" class="input" placeholder="ООО «…»">
+          <input id="m-cp" class="input" list="cp-list" autocomplete="off" placeholder="ООО «…»">
+          <datalist id="cp-list"></datalist>
         </div>
         <div class="field full">
           <label>Третья сторона <span class="muted" style="text-transform:none;letter-spacing:0">(если договор трёхсторонний)</span></label>
-          <input id="m-third" class="input" placeholder="Напр.: ОАО «Кыргыз почтаси»">
+          <input id="m-third" class="input" list="tp-list" autocomplete="off" placeholder="Напр.: ОАО «Кыргыз почтаси»">
+          <datalist id="tp-list"></datalist>
         </div>
         <div class="field">
           <label>Тип записи</label>
@@ -608,6 +610,17 @@ async function logAudit(action, rec, id){
     });
   }catch(_){}
 }
+async function loadPartySuggestions(){
+  const { data } = await sb.from('contract_archive').select('counterparty,third_party').limit(2000);
+  const cps = new Set(), all = new Set();
+  (data||[]).forEach(r=>{
+    if(r.counterparty){ cps.add(r.counterparty); all.add(r.counterparty); }
+    if(r.third_party){ all.add(r.third_party); }
+  });
+  const sortRu = s => [...s].sort((a,b)=>a.localeCompare(b,'ru'));
+  $('cp-list').innerHTML = sortRu(cps).map(v=>`<option value="${esc(v)}">`).join('');
+  $('tp-list').innerHTML = sortRu(all).map(v=>`<option value="${esc(v)}">`).join('');
+}
 async function loadParents(excludeId){
   const cp = $('m-cp').value.trim();
   let q = sb.from('contract_archive')
@@ -723,7 +736,7 @@ async function del(r){
 let pickedFile = null;
 let editingRow = null;
 const overlay = $('upload-overlay');
-$('open-upload').onclick = () => { resetModal(); loadParents(); overlay.classList.remove('hidden'); };
+$('open-upload').onclick = () => { resetModal(); loadParents(); loadPartySuggestions(); overlay.classList.remove('hidden'); };
 function closeModal(){ overlay.classList.add('hidden'); }
 $('modal-close').onclick = closeModal;
 $('modal-cancel').onclick = closeModal;
@@ -732,6 +745,7 @@ overlay.addEventListener('click', e => { if(e.target===overlay) closeModal(); })
 async function openEdit(r){
   editingRow = r;
   $('modal-title').textContent = 'Редактировать договор';
+  loadPartySuggestions();
   // если у старой записи юр.лицо вне списка — добавим временной опцией, чтобы не потерять
   if(r.legal_entity && !ENTITIES.includes(r.legal_entity)){
     $('m-entity').insertAdjacentHTML('beforeend', `<option>${esc(r.legal_entity)}</option>`);
