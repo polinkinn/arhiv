@@ -190,6 +190,7 @@
   tr.addendum td:first-child{padding-left:28px}
   .ds-arrow{color:var(--accent);font-weight:700;margin-right:4px}
   .ds-chip{display:inline-block;margin-left:7px;padding:1px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600;vertical-align:middle}
+  .party-chip{display:inline-block;margin-left:7px;padding:1px 8px;border-radius:999px;background:#efe6d6;color:var(--amber);font-size:11.5px;font-weight:600;vertical-align:middle;cursor:default}
   tr.orphan td{background:var(--red-soft)}
   .warn-chip{display:inline-block;margin-left:7px;padding:1px 8px;border-radius:999px;background:var(--red);color:#fff;font-size:11.5px;font-weight:600;vertical-align:middle}
   /* journal */
@@ -328,6 +329,10 @@
         <div class="field full">
           <label>Контрагент <span class="req">*</span></label>
           <input id="m-cp" class="input" placeholder="ООО «…»">
+        </div>
+        <div class="field full">
+          <label>Третья сторона <span class="muted" style="text-transform:none;letter-spacing:0">(если договор трёхсторонний)</span></label>
+          <input id="m-third" class="input" placeholder="Напр.: ОАО «Кыргыз почтаси»">
         </div>
         <div class="field">
           <label>Тип записи</label>
@@ -536,6 +541,7 @@ function rowHtml(r, opts={}){
     cpCell = `<span class="cp">${esc(r.counterparty)}</span>`;
     if(opts.addCount) cpCell += `<span class="ds-chip">+${opts.addCount} ДС</span>`;
   }
+  if(r.third_party) cpCell += `<span class="party-chip" title="${esc(r.third_party)}">3-я сторона</span>`;
   const trClass = opts.addendum ? (opts.orphan ? 'addendum orphan' : 'addendum') : '';
   return `<tr id="row-${r.id}" class="${trClass}" title="Двойной клик — редактировать">
     <td>${cpCell}</td>
@@ -731,6 +737,7 @@ async function openEdit(r){
     $('m-entity').insertAdjacentHTML('beforeend', `<option>${esc(r.legal_entity)}</option>`);
   }
   $('m-cp').value     = r.counterparty || '';
+  $('m-third').value  = r.third_party || '';
   $('m-entity').value = r.legal_entity || '';
   $('m-rtype').value  = r.record_type || 'main';
   $('parent-field').style.display = ($('m-rtype').value==='addendum') ? '' : 'none';
@@ -808,6 +815,7 @@ $('modal-save').onclick = async () => {
     const isAddendum = $('m-rtype').value === 'addendum';
     const rec = {
       counterparty: cp,
+      third_party: $('m-third').value.trim() || null,
       legal_entity: $('m-entity').value || null,
       counterparty_type: $('m-type').value,
       record_type: $('m-rtype').value,
@@ -853,7 +861,7 @@ $('modal-save').onclick = async () => {
 function resetModal(){
   editingRow = null;
   $('modal-title').textContent = 'Новый договор';
-  ['m-cp','m-num','m-title','m-signed','m-until','m-amount','m-tags','m-notes'].forEach(id=>$(id).value='');
+  ['m-cp','m-third','m-num','m-title','m-signed','m-until','m-amount','m-tags','m-notes'].forEach(id=>$(id).value='');
   $('m-entity').value=''; $('m-type').value='client'; $('m-cat').value='Склад'; $('m-status').value='active'; $('m-curr').value='';
   $('m-rtype').value='main'; $('m-parent').value=''; $('parent-field').style.display='none';
   pickedFile=null; $('m-file').value='';
