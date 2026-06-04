@@ -185,6 +185,19 @@
   .exp-days{font-weight:600;white-space:nowrap}
   .quality{color:var(--ink-soft);font-size:13.5px;padding:2px 2px 8px}
 
+  /* grouping: addenda nested under main */
+  tr.addendum td{background:#faf8f2}
+  tr.addendum td:first-child{padding-left:28px}
+  .ds-arrow{color:var(--accent);font-weight:700;margin-right:4px}
+  .ds-chip{display:inline-block;margin-left:7px;padding:1px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600;vertical-align:middle}
+  tr.orphan td{background:var(--red-soft)}
+  .warn-chip{display:inline-block;margin-left:7px;padding:1px 8px;border-radius:999px;background:var(--red);color:#fff;font-size:11.5px;font-weight:600;vertical-align:middle}
+  /* journal */
+  .jo-row{display:grid;grid-template-columns:160px 1fr;gap:14px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .jo-row:last-child{border-bottom:none}
+  .jo-when{color:var(--ink-soft);font-size:13px;white-space:nowrap}
+  .jo-cp{color:var(--ink-soft)}
+
   @media(max-width:880px){
     .filters{grid-template-columns:1fr 1fr}
     .grid2{grid-template-columns:1fr}
@@ -192,6 +205,7 @@
     .stat-grid{grid-template-columns:1fr 1fr}
     .an-cards{grid-template-columns:1fr}
     .bar-row{grid-template-columns:110px 1fr 34px}
+    .jo-row{grid-template-columns:1fr}
   }
 </style>
 </head>
@@ -227,6 +241,7 @@
     <div class="tabs">
       <button id="tab-co" class="tab active">Договоры</button>
       <button id="tab-an" class="tab">Аналитика</button>
+      <button id="tab-jo" class="tab">Журнал</button>
     </div>
     <div id="view-contracts">
     <div class="page-head">
@@ -289,6 +304,11 @@
       <div class="card-block"><h3 class="block-title">Ближайшие окончания и просрочки</h3><div id="an-expiry"></div></div>
       <div id="an-quality" class="quality"></div>
     </div>
+
+    <div id="view-journal" class="hidden">
+      <div class="page-head"><div><h2 class="serif">Журнал</h2><div class="count" id="jo-sub">кто и когда вносил изменения</div></div></div>
+      <div class="card-block"><div id="jo-list"></div></div>
+    </div>
   </div>
 </div>
 
@@ -308,6 +328,17 @@
         <div class="field full">
           <label>Контрагент <span class="req">*</span></label>
           <input id="m-cp" class="input" placeholder="ООО «…»">
+        </div>
+        <div class="field">
+          <label>Тип записи</label>
+          <select id="m-rtype" class="input">
+            <option value="main">Основной договор</option>
+            <option value="addendum">Допсоглашение (ДС)</option>
+          </select>
+        </div>
+        <div class="field" id="parent-field" style="display:none">
+          <label>К какому договору</label>
+          <select id="m-parent" class="input"></select>
         </div>
         <div class="field">
           <label>Тип</label>
@@ -403,11 +434,13 @@ async function init(){
   render(session);
   sb.auth.onAuthStateChange((_e, s) => render(s));
 }
+let currentEmail = null;
 function render(session){
   if(session){
     $('login-view').classList.add('hidden');
     $('app-view').classList.remove('hidden');
     $('who-email').textContent = session.user.email;
+    currentEmail = session.user.email;
     load();
   } else {
     $('app-view').classList.add('hidden');
@@ -454,7 +487,34 @@ async function load(){
     rows.innerHTML = `<tr><td colspan="11"><div class="empty"><span class="serif">Ничего не найдено</span>Измените фильтры или загрузите первый договор.</div></td></tr>`;
     return;
   }
-  rows.innerHTML = data.map(rowHtml).join('');
+
+  const filtersActive = !!($('q').value.trim() || $('f-entity').value || $('f-type').value || $('f-cat').value || $('f-status').value || $('f-from').value || $('f-to').value);
+  const mainsById = new Map();
+  const addendaByParent = new Map();
+  data.forEach(r => {
+    if(r.record_type === 'addendum'){
+      if(!addendaByParent.has(r.parent_id)) addendaByParent.set(r.parent_id, []);
+      addendaByParent.get(r.parent_id).push(r);
+    } else {
+      mainsById.set(r.id, r);
+    }
+  });
+
+  let html = '';
+  for(const r of data){
+    if(r.record_type === 'addendum' && r.parent_id && mainsById.has(r.parent_id)) continue; // выведется под своим договором
+    if(r.record_type === 'addendum'){
+      // самостоятельное ДС: либо без основного, либо основной вне текущего списка
+      const orphan = !r.parent_id || !filtersActive; // нет ссылки, или основной реально отсутствует
+      const note = (r.parent_id && filtersActive) ? 'основной вне фильтра' : '';
+      html += rowHtml(r, { addendum:true, orphan: (!r.parent_id) || (r.parent_id && !filtersActive), note });
+    } else {
+      const kids = (addendaByParent.get(r.id) || []).sort((a,b)=>(b.signed_date||'').localeCompare(a.signed_date||''));
+      html += rowHtml(r, { addCount: kids.length });
+      kids.forEach(k => { html += rowHtml(k, { addendum:true }); });
+    }
+  }
+  rows.innerHTML = html;
   data.forEach(r => {
     $('dl-'+r.id).onclick = () => download(r);
     $('del-'+r.id).onclick = () => del(r);
@@ -462,13 +522,23 @@ async function load(){
     $('row-'+r.id).ondblclick = (e) => { if(e.target.closest('button')) return; openEdit(r); };
   });
 }
-function rowHtml(r){
+function rowHtml(r, opts={}){
   const typeB = r.counterparty_type
     ? `<span class="badge ${r.counterparty_type==='client'?'b-client':'b-contractor'}">${TYPE[r.counterparty_type]||r.counterparty_type}</span>` : '';
   const statB = `<span class="badge b-${r.status||'active'}">${STAT[r.status]||r.status||'—'}</span>`;
   const amount = r.amount!=null ? fmt(r.amount)+(r.currency?(' '+r.currency):'') : '<span class="muted">—</span>';
-  return `<tr id="row-${r.id}" title="Двойной клик — редактировать">
-    <td class="cp">${esc(r.counterparty)}</td>
+  let cpCell;
+  if(opts.addendum){
+    cpCell = `<span class="ds-arrow">↳</span><span class="muted">${esc(r.counterparty)}</span>`;
+    if(opts.orphan) cpCell += `<span class="warn-chip">⚠ нет основного</span>`;
+    else if(opts.note) cpCell += ` <span class="muted" style="font-size:12px">(${opts.note})</span>`;
+  } else {
+    cpCell = `<span class="cp">${esc(r.counterparty)}</span>`;
+    if(opts.addCount) cpCell += `<span class="ds-chip">+${opts.addCount} ДС</span>`;
+  }
+  const trClass = opts.addendum ? (opts.orphan ? 'addendum orphan' : 'addendum') : '';
+  return `<tr id="row-${r.id}" class="${trClass}" title="Двойной клик — редактировать">
+    <td>${cpCell}</td>
     <td>${esc(r.legal_entity)||'<span class="muted">—</span>'}</td>
     <td>${typeB}</td>
     <td class="nowrap">${esc(r.contract_number)||'<span class="muted">—</span>'}</td>
@@ -497,14 +567,52 @@ $('reset-btn').onclick = () => {
 /* ---------- TABS ---------- */
 $('tab-co').onclick = () => showTab('co');
 $('tab-an').onclick = () => showTab('an');
+$('tab-jo').onclick = () => showTab('jo');
 function showTab(t){
-  const an = t==='an';
-  $('view-analytics').classList.toggle('hidden', !an);
-  $('view-contracts').classList.toggle('hidden', an);
-  $('tab-an').classList.toggle('active', an);
-  $('tab-co').classList.toggle('active', !an);
-  if(an) renderAnalytics();
+  $('view-contracts').classList.toggle('hidden', t!=='co');
+  $('view-analytics').classList.toggle('hidden', t!=='an');
+  $('view-journal').classList.toggle('hidden', t!=='jo');
+  $('tab-co').classList.toggle('active', t==='co');
+  $('tab-an').classList.toggle('active', t==='an');
+  $('tab-jo').classList.toggle('active', t==='jo');
+  if(t==='an') renderAnalytics();
+  if(t==='jo') renderJournal();
 }
+
+/* ---------- JOURNAL ---------- */
+const ACT = { create:'добавил(а)', update:'изменил(а)', delete:'удалил(а)' };
+async function renderJournal(){
+  $('jo-list').innerHTML = '<div class="exp-meta">Загрузка…</div>';
+  const { data, error } = await sb.from('contract_audit').select('*').order('changed_at',{ascending:false}).limit(150);
+  if(error){ $('jo-list').innerHTML = `<div class="exp-meta">Ошибка: ${esc(error.message)}</div>`; return; }
+  if(!data.length){ $('jo-list').innerHTML = '<div class="exp-meta">Пока нет записей об изменениях.</div>'; return; }
+  $('jo-list').innerHTML = data.map(a => {
+    const when = new Date(a.changed_at).toLocaleString('ru-RU');
+    const what = (esc(a.counterparty)||'—') + (a.contract_number?(' · '+esc(a.contract_number)):'');
+    return `<div class="jo-row"><span class="jo-when">${when}</span><span><b>${esc(a.changed_by)||'—'}</b> ${ACT[a.action]||a.action} <span class="jo-cp">${what}</span></span></div>`;
+  }).join('');
+}
+async function logAudit(action, rec, id){
+  try{
+    await sb.from('contract_audit').insert({
+      contract_id: id || null,
+      counterparty: rec.counterparty || null,
+      contract_number: rec.contract_number || null,
+      action, changed_by: currentEmail || null,
+    });
+  }catch(_){}
+}
+async function loadParents(excludeId){
+  const { data } = await sb.from('contract_archive')
+    .select('id,counterparty,contract_number,signed_date')
+    .eq('record_type','main').order('counterparty').limit(500);
+  const opts = (data||[]).filter(c=>c.id!==excludeId)
+    .map(c=>`<option value="${c.id}">${esc(c.counterparty)} · ${esc(c.contract_number)||'без №'}${c.signed_date?(' · '+c.signed_date):''}</option>`).join('');
+  $('m-parent').innerHTML = '<option value="">— выберите основной договор —</option>' + opts;
+}
+$('m-rtype').onchange = () => {
+  $('parent-field').style.display = $('m-rtype').value==='addendum' ? '' : 'none';
+};
 
 /* ---------- ANALYTICS ---------- */
 function daysUntil(d){ const t=new Date(); t.setHours(0,0,0,0); const x=new Date(d+'T00:00:00'); return Math.round((x-t)/86400000); }
@@ -579,6 +687,7 @@ async function del(r){
   if(r.file_path) await sb.storage.from('contracts').remove([r.file_path]);
   const { error } = await sb.from('contract_archive').delete().eq('id', r.id);
   if(error){ alert('Ошибка удаления: ' + error.message); return; }
+  await logAudit('delete', r, r.id);
   load();
 }
 
@@ -586,21 +695,25 @@ async function del(r){
 let pickedFile = null;
 let editingRow = null;
 const overlay = $('upload-overlay');
-$('open-upload').onclick = () => { resetModal(); overlay.classList.remove('hidden'); };
+$('open-upload').onclick = () => { resetModal(); loadParents(); overlay.classList.remove('hidden'); };
 function closeModal(){ overlay.classList.add('hidden'); }
 $('modal-close').onclick = closeModal;
 $('modal-cancel').onclick = closeModal;
 overlay.addEventListener('click', e => { if(e.target===overlay) closeModal(); });
 
-function openEdit(r){
+async function openEdit(r){
   editingRow = r;
   $('modal-title').textContent = 'Редактировать договор';
+  await loadParents(r.id);
   // если у старой записи юр.лицо вне списка — добавим временной опцией, чтобы не потерять
   if(r.legal_entity && !ENTITIES.includes(r.legal_entity)){
     $('m-entity').insertAdjacentHTML('beforeend', `<option>${esc(r.legal_entity)}</option>`);
   }
   $('m-cp').value     = r.counterparty || '';
   $('m-entity').value = r.legal_entity || '';
+  $('m-rtype').value  = r.record_type || 'main';
+  $('parent-field').style.display = ($('m-rtype').value==='addendum') ? '' : 'none';
+  $('m-parent').value = r.parent_id || '';
   $('m-type').value   = r.counterparty_type || 'client';
   $('m-cat').value    = r.category || 'Склад';
   $('m-num').value    = r.contract_number || '';
@@ -654,10 +767,13 @@ $('modal-save').onclick = async () => {
     }
 
     const tags = $('m-tags').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const isAddendum = $('m-rtype').value === 'addendum';
     const rec = {
       counterparty: cp,
       legal_entity: $('m-entity').value || null,
       counterparty_type: $('m-type').value,
+      record_type: $('m-rtype').value,
+      parent_id: isAddendum ? ($('m-parent').value || null) : null,
       contract_number: $('m-num').value.trim() || null,
       title: $('m-title').value.trim() || null,
       category: $('m-cat').value,
@@ -678,9 +794,11 @@ $('modal-save').onclick = async () => {
       if(uploadedNewPath && oldPath && oldPath!==uploadedNewPath){
         await sb.storage.from('contracts').remove([oldPath]);
       }
+      await logAudit('update', rec, editingRow.id);
     } else {
-      const ins = await sb.from('contract_archive').insert(rec);
+      const ins = await sb.from('contract_archive').insert(rec).select('id').single();
       if(ins.error) throw ins.error;
+      await logAudit('create', rec, ins.data?.id);
     }
 
     msg.className='msg ok'; msg.textContent = editingRow ? 'Изменения сохранены.' : 'Договор сохранён.';
@@ -697,6 +815,7 @@ function resetModal(){
   $('modal-title').textContent = 'Новый договор';
   ['m-cp','m-num','m-title','m-signed','m-until','m-amount','m-tags','m-notes'].forEach(id=>$(id).value='');
   $('m-entity').value=''; $('m-type').value='client'; $('m-cat').value='Склад'; $('m-status').value='active'; $('m-curr').value='';
+  $('m-rtype').value='main'; $('m-parent').value=''; $('parent-field').style.display='none';
   pickedFile=null; $('m-file').value='';
   $('file-label').innerHTML = `<span class="fn">Выбрать файл</span> &nbsp;·&nbsp; <small>PDF, DOCX, JPG, PNG · до 30 MB</small>`;
   $('m-msg').className='msg';
