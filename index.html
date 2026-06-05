@@ -199,6 +199,18 @@
   .jo-when{color:var(--ink-soft);font-size:13px;white-space:nowrap}
   .jo-cp{color:var(--ink-soft)}
 
+  /* PL markup */
+  .pl-progress{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+  .pl-bar{flex:1;min-width:180px;height:10px;background:var(--paper-2);border-radius:6px;overflow:hidden}
+  .pl-bar > i{display:block;height:100%;background:var(--accent);border-radius:6px}
+  .pl-progress .pl-num{font-weight:600;color:var(--ink-soft);font-size:13.5px;white-space:nowrap}
+  table.pl-tbl{min-width:760px}
+  table.pl-tbl select.input, table.pl-tbl input.input{padding:7px 9px;font-size:13.5px}
+  .pl-dir-chip{display:inline-block;padding:2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600}
+  .pl-clients-chip{display:inline-block;padding:1px 8px;border-radius:999px;background:#efe6d6;color:var(--amber);font-size:11px;font-weight:600;margin:1px 2px}
+  .pl-none{color:var(--ink-soft);font-size:12.5px;font-style:italic}
+  .pl-saved{color:var(--accent);font-size:12px;font-weight:600}
+
   @media(max-width:880px){
     .filters{grid-template-columns:1fr 1fr}
     .grid2{grid-template-columns:1fr}
@@ -241,6 +253,7 @@
   <div class="wrap">
     <div class="tabs">
       <button id="tab-co" class="tab active">Договоры</button>
+      <button id="tab-pl" class="tab hidden">Разметка PL</button>
       <button id="tab-an" class="tab">Аналитика</button>
       <button id="tab-jo" class="tab">Журнал</button>
     </div>
@@ -310,6 +323,51 @@
       <div class="page-head"><div><h2 class="serif">Журнал</h2><div class="count" id="jo-sub">кто и когда вносил изменения</div></div></div>
       <div class="card-block"><div id="jo-list"></div></div>
     </div>
+
+    <div id="view-pl" class="hidden">
+      <div class="page-head">
+        <div><h2 class="serif">Разметка PL</h2>
+          <div class="count">Направление бизнеса и бизнес-клиент для каждого контрагента</div></div>
+      </div>
+      <div class="card-block">
+        <h3 class="block-title">Доступ к разметке PL</h3>
+        <div class="quality" style="padding:0 0 10px">Эту вкладку видят только люди из списка. Добавь email коллеги (у него должен быть аккаунт для входа), чтобы дать доступ.</div>
+        <div id="admin-list" style="margin-bottom:12px"></div>
+        <div class="search-row" style="margin-bottom:0">
+          <input id="admin-email" class="input" type="email" placeholder="email@antria.uz" style="max-width:320px">
+          <button id="admin-add" class="btn btn-sm">Дать доступ</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="pl-progress">
+          <span class="pl-num" id="pl-prog-txt">—</span>
+          <span class="pl-bar"><i id="pl-prog-bar" style="width:0%"></i></span>
+        </div>
+        <div class="search-row" style="margin-bottom:0">
+          <input id="pl-q" class="input" type="text" placeholder="Поиск контрагента…">
+          <select id="pl-filter" class="input" style="max-width:200px">
+            <option value="">Все контрагенты</option>
+            <option value="unmarked">Только без разметки</option>
+            <option value="marked">Только размеченные</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-block" style="padding:6px 0 0">
+        <div style="padding:0 16px 10px" class="quality">
+          Проставь направление и бизнес-клиента контрагенту — и <b>все его договоры</b> (и будущие) подхватят это автоматически.
+          У отдельного договора потом можно переопределить и указать несколько клиентов (вкладка «Договоры» → «Изменить»).
+        </div>
+        <div class="tscroll">
+          <table class="pl-tbl">
+            <thead><tr>
+              <th>Контрагент</th><th>Договоров</th><th style="width:210px">Направление PL</th>
+              <th style="width:210px">Бизнес-клиент</th><th style="width:120px"></th>
+            </tr></thead>
+            <tbody id="pl-rows"><tr><td colspan="5" class="loading-cell">Загрузка…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -359,6 +417,15 @@
           <select id="m-cat" class="input">
             <option>Склад</option><option>Транспорт</option><option>E-com</option><option>Услуги</option><option>Кредиты, займы</option><option>Прочее</option>
           </select>
+        </div>
+        <div class="field">
+          <label>Направление PL</label>
+          <select id="m-pldir" class="input"></select>
+        </div>
+        <div class="field full">
+          <label>Бизнес-клиент(ы) <span class="muted" style="text-transform:none;letter-spacing:0">(через запятую — если несколько)</span></label>
+          <input id="m-bclients" class="input" list="bc-list" autocomplete="off" placeholder="Напр.: SMB или CAINIAO, Магнит косметикс">
+          <datalist id="bc-list"></datalist>
         </div>
         <div class="field">
           <label>Номер договора</label>
@@ -427,27 +494,63 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const TYPE = {client:'Клиент', contractor:'Подрядчик', both:'Оба', other:'Другое'};
 const STAT = {active:'Действует', expired:'Истёк', terminated:'Расторгнут'};
 const ENTITIES = ['ИП ООО "DAILY MAIL"','ИП ООО "NWL OPERATIONS"','ООО "DAILY MAIL ZENITH FZE"','MTS','NOVEX','GOODSHUB','INNOVATE'];
+const PL_DIRECTIONS = ['Складская логистика','Транспортная логистика','3PL','Обработка МКО','Прочее'];
+let BCLIENTS = [];        // справочник бизнес-клиентов (имена)
+let CP_DEFAULTS = {};     // имя контрагента -> {dir, client}
 const $ = id => document.getElementById(id);
 
 function fillEntities(){
   $('m-entity').innerHTML = '<option value="">—</option>' + ENTITIES.map(v=>`<option>${esc(v)}</option>`).join('');
   $('f-entity').innerHTML = '<option value="">Все</option>' + ENTITIES.map(v=>`<option>${esc(v)}</option>`).join('');
+  $('m-pldir').innerHTML = '<option value="">—</option>' + PL_DIRECTIONS.map(v=>`<option>${esc(v)}</option>`).join('');
+}
+
+// Справочник бизнес-клиентов + дефолты контрагентов
+async function loadBClients(){
+  const { data } = await sb.from('business_clients').select('name').order('name');
+  BCLIENTS = (data||[]).map(r=>r.name);
+  $('bc-list').innerHTML = BCLIENTS.map(v=>`<option value="${esc(v)}">`).join('');
+}
+async function loadCPDefaults(){
+  const { data } = await sb.from('counterparties').select('name,default_pl_direction,default_business_client');
+  CP_DEFAULTS = {};
+  (data||[]).forEach(r=>{ CP_DEFAULTS[r.name] = { dir:r.default_pl_direction, client:r.default_business_client }; });
+}
+// Гарантирует, что все указанные бизнес-клиенты есть в справочнике
+async function ensureBClients(names){
+  const fresh = names.filter(n => n && !BCLIENTS.includes(n));
+  if(!fresh.length) return;
+  await sb.from('business_clients').upsert(fresh.map(name=>({name})), { onConflict:'name', ignoreDuplicates:true });
+  await loadBClients();
 }
 
 /* ---------- AUTH ---------- */
 async function init(){
   fillEntities();
   const { data:{ session } } = await sb.auth.getSession();
+  if(session){ loadBClients(); loadCPDefaults(); }
   render(session);
   sb.auth.onAuthStateChange((_e, s) => render(s));
 }
 let currentEmail = null;
+let IS_ADMIN = false;
+async function checkAdmin(){
+  IS_ADMIN = false;
+  try{
+    const { data } = await sb.from('app_admins').select('email').eq('email', currentEmail).maybeSingle();
+    IS_ADMIN = !!data;
+  }catch(_){ IS_ADMIN = false; }
+  $('tab-pl').classList.toggle('hidden', !IS_ADMIN);
+  if(!IS_ADMIN && !$('view-pl').classList.contains('hidden')) showTab('co');
+}
 function render(session){
   if(session){
     $('login-view').classList.add('hidden');
     $('app-view').classList.remove('hidden');
     $('who-email').textContent = session.user.email;
     currentEmail = session.user.email;
+    loadBClients(); loadCPDefaults();
+    checkAdmin();
     load();
   } else {
     $('app-view').classList.add('hidden');
@@ -574,15 +677,20 @@ $('reset-btn').onclick = () => {
 
 /* ---------- TABS ---------- */
 $('tab-co').onclick = () => showTab('co');
+$('tab-pl').onclick = () => showTab('pl');
 $('tab-an').onclick = () => showTab('an');
 $('tab-jo').onclick = () => showTab('jo');
 function showTab(t){
+  if(t==='pl' && !IS_ADMIN) t='co';
   $('view-contracts').classList.toggle('hidden', t!=='co');
+  $('view-pl').classList.toggle('hidden', t!=='pl');
   $('view-analytics').classList.toggle('hidden', t!=='an');
   $('view-journal').classList.toggle('hidden', t!=='jo');
   $('tab-co').classList.toggle('active', t==='co');
+  $('tab-pl').classList.toggle('active', t==='pl');
   $('tab-an').classList.toggle('active', t==='an');
   $('tab-jo').classList.toggle('active', t==='jo');
+  if(t==='pl') renderPL();
   if(t==='an') renderAnalytics();
   if(t==='jo') renderJournal();
 }
@@ -641,6 +749,26 @@ $('m-rtype').onchange = () => {
   if(ad) loadParents(editingRow?.id);
 };
 $('m-cp').addEventListener('input', () => { if($('m-rtype').value==='addendum') loadParents(editingRow?.id); });
+// автоподстановка направления/клиента из дефолтов контрагента (только если поля пустые)
+function applyCPDefaults(){
+  const d = CP_DEFAULTS[$('m-cp').value.trim()];
+  if(!d) return;
+  if(d.dir && !$('m-pldir').value) $('m-pldir').value = d.dir;
+  if(d.client && !$('m-bclients').value.trim()) $('m-bclients').value = d.client;
+}
+$('m-cp').addEventListener('change', applyCPDefaults);
+$('m-cp').addEventListener('blur', applyCPDefaults);
+// ДС наследует разметку от выбранного основного договора (если у ДС поля пустые)
+$('m-parent').addEventListener('change', async () => {
+  const pid = $('m-parent').value;
+  if(!pid) return;
+  if($('m-pldir').value && $('m-bclients').value.trim()) return;
+  const { data } = await sb.from('contract_archive').select('pl_direction,business_clients').eq('id', pid).single();
+  if(!data) return;
+  if(data.pl_direction && !$('m-pldir').value) $('m-pldir').value = data.pl_direction;
+  if(data.business_clients && data.business_clients.length && !$('m-bclients').value.trim())
+    $('m-bclients').value = data.business_clients.join(', ');
+});
 
 // После сохранения основного договора — предложить привязать осиротевшие ДС этого контрагента
 async function offerLinkOrphans(mainId, counterparty){
@@ -653,6 +781,116 @@ async function offerLinkOrphans(mainId, counterparty){
   const ok = confirm(`У контрагента «${counterparty}» есть допсоглашения без основного договора (${data.length}):\n\n${list}\n\nПривязать их к этому договору?`);
   if(!ok) return;
   await sb.from('contract_archive').update({ parent_id: mainId }).in('id', data.map(d=>d.id));
+}
+
+/* ---------- ACCESS (admins) ---------- */
+async function renderAdmins(){
+  const box = $('admin-list');
+  const { data, error } = await sb.from('app_admins').select('email,added_by').order('email');
+  if(error){ box.innerHTML = `<span class="pl-none">Не удалось загрузить список: ${esc(error.message)}</span>`; return; }
+  box.innerHTML = (data||[]).map(a=>{
+    const me = a.email===currentEmail;
+    const del = me ? '' : `<button class="btn btn-danger btn-sm" data-rm="${esc(a.email)}">Убрать</button>`;
+    return `<div class="exp-row" style="grid-template-columns:1fr auto">
+      <span><b>${esc(a.email)}</b>${me?' <span class="pl-saved">— это вы</span>':''}</span>${del}</div>`;
+  }).join('') || '<span class="pl-none">Список пуст.</span>';
+  box.querySelectorAll('[data-rm]').forEach(b=> b.onclick = () => delAdmin(b.getAttribute('data-rm')));
+}
+$('admin-add').onclick = async () => {
+  const email = $('admin-email').value.trim().toLowerCase();
+  if(!email || !email.includes('@')){ alert('Введите корректный email.'); return; }
+  const { error } = await sb.from('app_admins').insert({ email, added_by: currentEmail });
+  if(error){ alert('Ошибка: '+error.message); return; }
+  $('admin-email').value=''; renderAdmins();
+};
+async function delAdmin(email){
+  if(!confirm(`Убрать доступ к разметке PL у «${email}»?`)) return;
+  const { error } = await sb.from('app_admins').delete().eq('email', email);
+  if(error){ alert('Ошибка: '+error.message); return; }
+  renderAdmins();
+}
+
+/* ---------- PL MARKUP ---------- */
+let PL_DATA = [];
+async function renderPL(){
+  renderAdmins();
+  const tb = $('pl-rows');
+  tb.innerHTML = '<tr><td colspan="5" class="loading-cell">Загрузка…</td></tr>';
+  await loadBClients();
+  const [cpRes, caRes] = await Promise.all([
+    sb.from('counterparties').select('id,name,default_pl_direction,default_business_client').order('name'),
+    sb.from('contract_archive').select('counterparty').limit(3000)
+  ]);
+  const counts = {};
+  (caRes.data||[]).forEach(r=>{ if(r.counterparty) counts[r.counterparty]=(counts[r.counterparty]||0)+1; });
+  PL_DATA = (cpRes.data||[]).map(c=>({
+    id:c.id, name:c.name, dir:c.default_pl_direction||'', client:c.default_business_client||'',
+    n: counts[c.name]||0
+  }));
+  CP_DEFAULTS = {}; PL_DATA.forEach(c=>{ CP_DEFAULTS[c.name]={dir:c.dir,client:c.client}; });
+  drawPL();
+}
+function drawPL(){
+  const tb = $('pl-rows');
+  const q = $('pl-q').value.trim().toLowerCase();
+  const mode = $('pl-filter').value;
+  let rows = PL_DATA.slice();
+  if(q) rows = rows.filter(c=>c.name.toLowerCase().includes(q));
+  if(mode==='unmarked') rows = rows.filter(c=>!c.dir && !c.client);
+  if(mode==='marked')   rows = rows.filter(c=>c.dir || c.client);
+
+  const marked = PL_DATA.filter(c=>c.dir||c.client).length;
+  const tot = PL_DATA.length;
+  $('pl-prog-txt').textContent = `Размечено ${marked} из ${tot} контрагентов`;
+  $('pl-prog-bar').style.width = tot ? Math.round(marked/tot*100)+'%' : '0%';
+
+  if(!rows.length){ tb.innerHTML = '<tr><td colspan="5" class="empty">Ничего не найдено.</td></tr>'; return; }
+  tb.innerHTML = rows.map(c=>{
+    const dirOpts = '<option value="">—</option>' + PL_DIRECTIONS.map(d=>`<option ${d===c.dir?'selected':''}>${esc(d)}</option>`).join('');
+    return `<tr>
+      <td class="cp">${esc(c.name)}</td>
+      <td class="muted nowrap">${c.n}</td>
+      <td><select class="input" id="pld-${c.id}">${dirOpts}</select></td>
+      <td><input class="input" id="plc-${c.id}" list="bc-list" autocomplete="off" value="${esc(c.client)}" placeholder="—"></td>
+      <td><button class="btn btn-sm" id="pls-${c.id}">Сохранить</button> <span class="pl-saved hidden" id="plok-${c.id}">✓</span></td>
+    </tr>`;
+  }).join('');
+  rows.forEach(c=>{ $('pls-'+c.id).onclick = () => savePLrow(c); });
+}
+$('pl-q').addEventListener('input', drawPL);
+$('pl-filter').addEventListener('change', drawPL);
+
+async function savePLrow(c){
+  const dir = $('pld-'+c.id).value;
+  const client = $('plc-'+c.id).value.trim();
+  const btn = $('pls-'+c.id); btn.disabled=true; btn.textContent='…';
+  try{
+    if(client) await ensureBClients([client]);
+    const { error } = await sb.from('counterparties')
+      .update({ default_pl_direction: dir||null, default_business_client: client||null })
+      .eq('id', c.id);
+    if(error) throw error;
+    c.dir=dir; c.client=client; CP_DEFAULTS[c.name]={dir,client};
+
+    // применить к договорам контрагента, у которых направление ещё не задано
+    if(c.n>0 && (dir||client)){
+      const ok = confirm(`Применить к договорам контрагента «${c.name}» (${c.n} шт.), у которых разметка ещё не заполнена?`);
+      if(ok){
+        const patch = {};
+        if(dir) patch.pl_direction = dir;
+        if(client) patch.business_clients = [client];
+        await sb.from('contract_archive').update(patch)
+          .eq('counterparty', c.name)
+          .or('pl_direction.is.null,pl_direction.eq.');
+      }
+    }
+    const okEl = $('plok-'+c.id); okEl.classList.remove('hidden');
+    setTimeout(()=>okEl.classList.add('hidden'), 1800);
+    const marked = PL_DATA.filter(x=>x.dir||x.client).length, tot=PL_DATA.length;
+    $('pl-prog-txt').textContent = `Размечено ${marked} из ${tot} контрагентов`;
+    $('pl-prog-bar').style.width = tot ? Math.round(marked/tot*100)+'%' : '0%';
+  }catch(e){ alert('Ошибка сохранения: '+(e.message||e)); }
+  finally{ btn.disabled=false; btn.textContent='Сохранить'; }
 }
 
 /* ---------- ANALYTICS ---------- */
@@ -759,6 +997,8 @@ async function openEdit(r){
   $('m-parent').value = r.parent_id || '';
   $('m-type').value   = r.counterparty_type || 'client';
   $('m-cat').value    = r.category || 'Склад';
+  $('m-pldir').value  = r.pl_direction || '';
+  $('m-bclients').value = (r.business_clients||[]).join(', ');
   $('m-num').value    = r.contract_number || '';
   $('m-status').value = r.status || 'active';
   $('m-title').value  = r.title || '';
@@ -826,6 +1066,8 @@ $('modal-save').onclick = async () => {
     }
 
     const tags = $('m-tags').value.split(',').map(s=>s.trim()).filter(Boolean);
+    const bclients = $('m-bclients').value.split(',').map(s=>s.trim()).filter(Boolean);
+    if(bclients.length) await ensureBClients(bclients);
     const isAddendum = $('m-rtype').value === 'addendum';
     const rec = {
       counterparty: cp,
@@ -837,6 +1079,8 @@ $('modal-save').onclick = async () => {
       contract_number: $('m-num').value.trim() || null,
       title: $('m-title').value.trim() || null,
       category: $('m-cat').value,
+      pl_direction: $('m-pldir').value || null,
+      business_clients: bclients,
       signed_date: $('m-signed').value || null,
       valid_until: $('m-until').value || null,
       amount: $('m-amount').value ? Number($('m-amount').value) : null,
@@ -875,8 +1119,8 @@ $('modal-save').onclick = async () => {
 function resetModal(){
   editingRow = null;
   $('modal-title').textContent = 'Новый договор';
-  ['m-cp','m-third','m-num','m-title','m-signed','m-until','m-amount','m-tags','m-notes'].forEach(id=>$(id).value='');
-  $('m-entity').value=''; $('m-type').value='client'; $('m-cat').value='Склад'; $('m-status').value='active'; $('m-curr').value='';
+  ['m-cp','m-third','m-num','m-title','m-signed','m-until','m-amount','m-tags','m-notes','m-bclients'].forEach(id=>$(id).value='');
+  $('m-entity').value=''; $('m-type').value='client'; $('m-cat').value='Склад'; $('m-status').value='active'; $('m-curr').value=''; $('m-pldir').value='';
   $('m-rtype').value='main'; $('m-parent').value=''; $('parent-field').style.display='none';
   pickedFile=null; $('m-file').value='';
   $('file-label').innerHTML = `<span class="fn">Выбрать файл</span> &nbsp;·&nbsp; <small>PDF, DOCX, JPG, PNG · до 30 MB</small>`;
