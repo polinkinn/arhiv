@@ -1202,6 +1202,32 @@ $('modal-save').onclick = async () => {
   if(!editingRow && !pickedFile){ msg.className='msg err'; msg.textContent='Выберите файл договора.'; return; }
   if(pickedFile && pickedFile.size > 31457280){ msg.className='msg err'; msg.textContent='Файл больше 30 MB.'; return; }
 
+  // --- автопроверки ввода ---
+  const Y = new Date().getFullYear();
+  const yearOf = s => s ? parseInt(String(s).split('-')[0],10) : null;
+  const sY = yearOf($('m-signed').value), uY = yearOf($('m-until').value);
+  // нереальный год (ловит опечатки вроде 62024). У «действует до» допускаем дальний срок.
+  if(sY!==null && (sY<2000 || sY>Y+1)){
+    msg.className='msg err'; msg.textContent=`Проверьте «Дата подписания»: год ${sY} выглядит некорректным.`; return;
+  }
+  if(uY!==null && (uY<2000 || uY>Y+30)){
+    msg.className='msg err'; msg.textContent=`Проверьте «Действует до»: год ${uY} выглядит некорректным.`; return;
+  }
+  // срок задом наперёд
+  const sgn=$('m-signed').value, unt=$('m-until').value;
+  if(sgn && unt && unt < sgn){
+    if(!confirm(`«Действует до» (${unt}) раньше даты подписания (${sgn}).\nВсё равно сохранить?`)) return;
+  }
+  // сумма
+  const amtRaw=$('m-amount').value;
+  if(amtRaw){
+    const amt=Number(amtRaw);
+    if(amt<0){ msg.className='msg err'; msg.textContent='Сумма не может быть отрицательной.'; return; }
+    if(amt>0 && !$('m-curr').value){
+      if(!confirm('Сумма указана, а валюта не выбрана.\nВсё равно сохранить?')) return;
+    }
+  }
+
   // проверка на дубль: контрагент + номер + юр. лицо
   const num = $('m-num').value.trim();
   const ent = $('m-entity').value;
