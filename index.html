@@ -291,6 +291,14 @@
           </select></div>
         <div class="f"><label>Подписан с</label><input id="f-from" class="input" type="date"></div>
         <div class="f"><label>Подписан по</label><input id="f-to" class="input" type="date"></div>
+        <div class="f"><label>Проверка</label>
+          <select id="f-acc" class="input">
+            <option value="">Все</option>
+            <option value="unchecked">Не проверены</option>
+            <option value="checked">Проверены</option>
+            <option value="rework">На доработке</option>
+            <option value="noorig">Без оригинала (скан/нет)</option>
+          </select></div>
       </div>
       <div class="filters-foot"><button id="reset-btn" class="btn btn-ghost btn-sm">Сбросить</button></div>
     </div>
@@ -300,9 +308,9 @@
         <table>
           <thead><tr>
             <th>Контрагент</th><th>Юр. лицо</th><th>Тип</th><th>№</th><th>Предмет</th><th>Категория</th>
-            <th>Подписан</th><th>Действует до</th><th>Сумма</th><th>Статус</th><th></th>
+            <th>Подписан</th><th>Действует до</th><th>Сумма</th><th>Статус</th><th>Проверка</th><th></th>
           </tr></thead>
-          <tbody id="rows"><tr><td colspan="11" class="loading-cell">Загрузка…</td></tr></tbody>
+          <tbody id="rows"><tr><td colspan="12" class="loading-cell">Загрузка…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -336,6 +344,15 @@
         <div class="search-row" style="margin-bottom:0">
           <input id="admin-email" class="input" type="email" placeholder="email@antria.uz" style="max-width:320px">
           <button id="admin-add" class="btn btn-sm">Дать доступ</button>
+        </div>
+      </div>
+      <div class="card-block">
+        <h3 class="block-title">Бухгалтеры (проверка договоров)</h3>
+        <div class="quality" style="padding:0 0 10px">Бухгалтеры могут ставить отметку «Проверено» и указывать оригинал/скан в карточке договора.</div>
+        <div id="acc-list" style="margin-bottom:12px"></div>
+        <div class="search-row" style="margin-bottom:0">
+          <input id="acc-email" class="input" type="email" placeholder="email@antria.uz" style="max-width:320px">
+          <button id="acc-add" class="btn btn-sm">Добавить бухгалтера</button>
         </div>
       </div>
       <div class="toolbar">
@@ -474,6 +491,29 @@
           </div>
           <input id="m-file" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" class="hidden">
         </div>
+        <div class="field full" id="acc-box" style="border-top:1px solid var(--line);padding-top:16px;margin-top:4px">
+          <label>Проверка бухгалтером</label>
+          <div class="field" style="margin-bottom:10px">
+            <label style="font-weight:600;color:var(--ink)">Оригинал документа</label>
+            <select id="m-original" class="input">
+              <option value="">— не указано —</option>
+              <option value="original">📄 Оригинал в бухгалтерии</option>
+              <option value="scan">🖨 Только скан</option>
+            </select>
+          </div>
+          <div style="margin-bottom:10px">
+            <span id="m-acc-status" class="muted" style="font-size:13px"></span>
+          </div>
+          <div class="field" style="margin-bottom:10px">
+            <label style="font-weight:600;color:var(--ink)">Замечание (что исправить)</label>
+            <textarea id="m-acc-issue" class="input" placeholder="Напр.: загружен не тот скан / сумма не совпадает / нет даты подписания"></textarea>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <button type="button" id="m-acc-btn" class="btn btn-sm">✓ Отметить «Проверено»</button>
+            <button type="button" id="m-acc-rework" class="btn btn-danger btn-sm">⚠ Вернуть на доработку</button>
+          </div>
+          <div id="acc-note" class="quality" style="padding:8px 0 0">Отметку «Проверено» и замечания ставит бухгалтер.</div>
+        </div>
       </div>
       <div id="m-msg" class="msg"></div>
     </div>
@@ -534,12 +574,17 @@ async function init(){
 }
 let currentEmail = null;
 let IS_ADMIN = false;
+let IS_ACCOUNTANT = false;
 async function checkAdmin(){
-  IS_ADMIN = false;
+  IS_ADMIN = false; IS_ACCOUNTANT = false;
   try{
     const { data } = await sb.from('app_admins').select('email').eq('email', currentEmail).maybeSingle();
     IS_ADMIN = !!data;
   }catch(_){ IS_ADMIN = false; }
+  try{
+    const { data } = await sb.from('accountants').select('email').eq('email', currentEmail).maybeSingle();
+    IS_ACCOUNTANT = !!data;
+  }catch(_){ IS_ACCOUNTANT = false; }
   $('tab-pl').classList.toggle('hidden', !IS_ADMIN);
   if(!IS_ADMIN && !$('view-pl').classList.contains('hidden')) showTab('co');
 }
@@ -574,7 +619,7 @@ $('logout-btn').onclick = () => sb.auth.signOut();
 /* ---------- LOAD / SEARCH ---------- */
 async function load(){
   const rows = $('rows');
-  rows.innerHTML = '<tr><td colspan="11" class="loading-cell">Загрузка…</td></tr>';
+  rows.innerHTML = '<tr><td colspan="12" class="loading-cell">Загрузка…</td></tr>';
   let q = sb.from('contract_archive').select('*');
 
   const text = $('q').value.trim();
@@ -585,20 +630,24 @@ async function load(){
   if($('f-status').value) q = q.eq('status', $('f-status').value);
   if($('f-from').value)   q = q.gte('signed_date', $('f-from').value);
   if($('f-to').value)     q = q.lte('signed_date', $('f-to').value);
+  if($('f-acc').value==='unchecked') q = q.eq('acc_checked', false).is('acc_issue', null);
+  if($('f-acc').value==='checked')   q = q.eq('acc_checked', true);
+  if($('f-acc').value==='rework')    q = q.not('acc_issue', 'is', null);
+  if($('f-acc').value==='noorig')    q = q.or('has_original.is.null,has_original.eq.scan');
 
   const { data, error } = await q.order('signed_date', { ascending:false, nullsFirst:false }).limit(500);
 
   if(error){
-    rows.innerHTML = `<tr><td colspan="11" class="loading-cell">Ошибка: ${esc(error.message)}</td></tr>`;
+    rows.innerHTML = `<tr><td colspan="12" class="loading-cell">Ошибка: ${esc(error.message)}</td></tr>`;
     $('count').textContent = '—'; return;
   }
   $('count').textContent = data.length + ' ' + plural(data.length, ['договор','договора','договоров']);
   if(!data.length){
-    rows.innerHTML = `<tr><td colspan="11"><div class="empty"><span class="serif">Ничего не найдено</span>Измените фильтры или загрузите первый договор.</div></td></tr>`;
+    rows.innerHTML = `<tr><td colspan="12"><div class="empty"><span class="serif">Ничего не найдено</span>Измените фильтры или загрузите первый договор.</div></td></tr>`;
     return;
   }
 
-  const filtersActive = !!($('q').value.trim() || $('f-entity').value || $('f-type').value || $('f-cat').value || $('f-status').value || $('f-from').value || $('f-to').value);
+  const filtersActive = !!($('q').value.trim() || $('f-entity').value || $('f-type').value || $('f-cat').value || $('f-status').value || $('f-from').value || $('f-to').value || $('f-acc').value);
   const mainsById = new Map();
   const addendaByParent = new Map();
   data.forEach(r => {
@@ -659,6 +708,7 @@ function rowHtml(r, opts={}){
     <td class="nowrap">${r.valid_until||'<span class="muted">—</span>'}</td>
     <td class="nowrap">${amount}</td>
     <td>${statB}</td>
+    <td class="nowrap">${accCell(r)}</td>
     <td><div class="row-actions">
       <button id="ed-${r.id}" class="btn btn-ghost btn-sm">Изменить</button>
       <button id="dl-${r.id}" class="btn btn-sm">Скачать</button>
@@ -666,12 +716,27 @@ function rowHtml(r, opts={}){
     </div></td>
   </tr>`;
 }
+// Значок проверки в таблице
+function accCell(r){
+  let chk;
+  if(r.acc_issue){
+    chk = `<span class="badge b-terminated" title="На доработке: ${esc(r.acc_issue)}">🔴 доработка</span>`;
+  } else if(r.acc_checked){
+    chk = `<span class="badge b-active" title="Проверено${r.acc_checked_by?(' · '+esc(r.acc_checked_by)):''}${r.acc_checked_at?(' · '+new Date(r.acc_checked_at).toLocaleDateString('ru-RU')):''}">🟢 пров.</span>`;
+  } else {
+    chk = `<span class="badge b-expired" title="Не проверено бухгалтером">⚪ нет</span>`;
+  }
+  let orig = '';
+  if(r.has_original==='original') orig = ` <span title="Оригинал в бухгалтерии">📄</span>`;
+  else if(r.has_original==='scan') orig = ` <span title="Только скан">🖨</span>`;
+  return chk + orig;
+}
 $('search-btn').onclick = load;
 $('q').addEventListener('keydown', e => { if(e.key==='Enter') load(); });
-['f-entity','f-type','f-cat','f-status','f-from','f-to'].forEach(id => $(id).addEventListener('change', load));
+['f-entity','f-type','f-cat','f-status','f-from','f-to','f-acc'].forEach(id => $(id).addEventListener('change', load));
 $('reset-btn').onclick = () => {
   ['q','f-from','f-to'].forEach(id=>$(id).value='');
-  ['f-entity','f-type','f-cat','f-status'].forEach(id=>$(id).value='');
+  ['f-entity','f-type','f-cat','f-status','f-acc'].forEach(id=>$(id).value='');
   load();
 };
 
@@ -810,10 +875,36 @@ async function delAdmin(email){
   renderAdmins();
 }
 
+async function renderAccountants(){
+  const box = $('acc-list');
+  const { data, error } = await sb.from('accountants').select('email').order('email');
+  if(error){ box.innerHTML = `<span class="pl-none">Не удалось загрузить: ${esc(error.message)}</span>`; return; }
+  box.innerHTML = (data||[]).map(a=>
+    `<div class="exp-row" style="grid-template-columns:1fr auto">
+      <span><b>${esc(a.email)}</b>${a.email===currentEmail?' <span class="pl-saved">— это вы</span>':''}</span>
+      <button class="btn btn-danger btn-sm" data-rmacc="${esc(a.email)}">Убрать</button></div>`
+  ).join('') || '<span class="pl-none">Список пуст.</span>';
+  box.querySelectorAll('[data-rmacc]').forEach(b=> b.onclick = () => delAccountant(b.getAttribute('data-rmacc')));
+}
+$('acc-add').onclick = async () => {
+  const email = $('acc-email').value.trim().toLowerCase();
+  if(!email || !email.includes('@')){ alert('Введите корректный email.'); return; }
+  const { error } = await sb.from('accountants').insert({ email, added_by: currentEmail });
+  if(error){ alert('Ошибка: '+error.message); return; }
+  $('acc-email').value=''; renderAccountants();
+};
+async function delAccountant(email){
+  if(!confirm(`Убрать роль бухгалтера у «${email}»?`)) return;
+  const { error } = await sb.from('accountants').delete().eq('email', email);
+  if(error){ alert('Ошибка: '+error.message); return; }
+  renderAccountants();
+}
+
 /* ---------- PL MARKUP ---------- */
 let PL_DATA = [];
 async function renderPL(){
   renderAdmins();
+  renderAccountants();
   const tb = $('pl-rows');
   tb.innerHTML = '<tr><td colspan="5" class="loading-cell">Загрузка…</td></tr>';
   await loadBClients();
@@ -923,7 +1014,7 @@ function expRow(r){
 async function renderAnalytics(){
   $('an-stats').innerHTML = '<div class="stat"><div class="v">…</div><div class="l">Загрузка</div></div>';
   const { data, error } = await sb.from('contract_archive')
-    .select('counterparty,legal_entity,category,counterparty_type,status,valid_until,amount,contract_number').limit(2000);
+    .select('counterparty,legal_entity,category,counterparty_type,status,valid_until,amount,contract_number,acc_checked,has_original,acc_issue').limit(2000);
   if(error){ $('an-stats').innerHTML = `<div class="stat bad"><div class="v">!</div><div class="l">Ошибка: ${esc(error.message)}</div></div>`; return; }
 
   const open = r => r.status==='active';
@@ -931,12 +1022,18 @@ async function renderAnalytics(){
   const active = data.filter(r=>r.status==='active').length;
   const soon = data.filter(r=>r.valid_until && open(r) && daysUntil(r.valid_until)>=0 && daysUntil(r.valid_until)<=90).length;
   const overdue = data.filter(r=>r.valid_until && open(r) && daysUntil(r.valid_until)<0).length;
+  const checked = data.filter(r=>r.acc_checked).length;
+  const noOrig = data.filter(r=>r.has_original!=='original').length;
+  const rework = data.filter(r=>r.acc_issue).length;
 
   $('an-stats').innerHTML =
     stat(total,'Всего договоров','') +
     stat(active,'Действующих','good') +
     stat(soon,'Истекает ≤ 90 дней','warn') +
-    stat(overdue,'Просрочено (дата прошла)','bad');
+    stat(overdue,'Просрочено (дата прошла)','bad') +
+    stat(`${checked}/${total}`,'Проверено бухгалтером', checked===total?'good':'warn') +
+    stat(rework,'На доработке', rework?'bad':'good') +
+    stat(noOrig,'Без оригинала (скан/нет)', noOrig?'bad':'good');
 
   $('an-entity').innerHTML   = barChart(groupCount(data,'legal_entity'));
   $('an-category').innerHTML = barChart(groupCount(data,'category'));
@@ -1012,9 +1109,83 @@ async function openEdit(r){
   $('file-label').innerHTML = r.file_name
     ? `<span class="fn">${esc(r.file_name)}</span> &nbsp;·&nbsp; <small>текущий файл · нажмите, чтобы заменить</small>`
     : `<span class="fn">Выбрать файл</span> &nbsp;·&nbsp; <small>PDF, DOCX, JPG, PNG · до 30 MB</small>`;
+  $('m-original').value = r.has_original || '';
+  $('m-acc-issue').value = r.acc_issue || '';
+  renderAccBox(r);
   $('m-msg').className='msg';
   overlay.classList.remove('hidden');
 }
+
+// Блок «Проверка бухгалтером»
+function renderAccBox(r){
+  const btn = $('m-acc-btn'), rew = $('m-acc-rework'), st = $('m-acc-status'), note = $('acc-note');
+  $('m-original').disabled = !IS_ACCOUNTANT;
+  $('m-acc-issue').disabled = !IS_ACCOUNTANT;
+  if(!r){ // новый договор — проверять можно только после сохранения
+    btn.classList.add('hidden'); rew.classList.add('hidden');
+    st.textContent = '';
+    note.textContent = IS_ACCOUNTANT ? 'Сначала сохраните договор, потом можно проверить или вернуть на доработку.' : 'Проверку и замечания ставит бухгалтер.';
+    return;
+  }
+  // статус
+  if(r.acc_issue){
+    st.innerHTML = `<span style="color:var(--red);font-weight:600">🔴 На доработке</span> — см. замечание ниже`;
+  } else if(r.acc_checked){
+    const by = r.acc_checked_by ? ` · ${r.acc_checked_by}` : '';
+    const at = r.acc_checked_at ? ` · ${new Date(r.acc_checked_at).toLocaleDateString('ru-RU')}` : '';
+    st.innerHTML = `<span class="pl-saved">🟢 Проверено${esc(by)}${at}</span>`;
+  } else {
+    st.innerHTML = '<span class="muted">⚪ Не проверено</span>';
+  }
+  if(IS_ACCOUNTANT){
+    btn.classList.remove('hidden'); rew.classList.remove('hidden');
+    btn.textContent = r.acc_checked ? '✕ Снять отметку' : '✓ Отметить «Проверено»';
+    note.textContent = '«Проверено» очищает замечание. «Вернуть на доработку» — впишите, что исправить.';
+  } else {
+    btn.classList.add('hidden'); rew.classList.add('hidden');
+    note.textContent = r.acc_issue ? 'Бухгалтер вернул договор на доработку — исправьте по замечанию и сохраните.' : 'Проверку и замечания ставит бухгалтер.';
+  }
+}
+// Отметить «Проверено» / снять
+$('m-acc-btn').onclick = async () => {
+  if(!editingRow || !IS_ACCOUNTANT) return;
+  const newVal = !editingRow.acc_checked;
+  const patch = {
+    acc_checked: newVal,
+    acc_checked_by: newVal ? currentEmail : null,
+    acc_checked_at: newVal ? new Date().toISOString() : null,
+    acc_issue: newVal ? null : editingRow.acc_issue,  // проверено → снимаем замечание
+    has_original: $('m-original').value || null,
+  };
+  $('m-acc-btn').disabled = true;
+  const { error } = await sb.from('contract_archive').update(patch).eq('id', editingRow.id);
+  $('m-acc-btn').disabled = false;
+  if(error){ alert('Ошибка: '+error.message); return; }
+  Object.assign(editingRow, patch);
+  if(newVal) $('m-acc-issue').value = '';
+  await logAudit('update', editingRow, editingRow.id);
+  renderAccBox(editingRow);
+  load();
+};
+// Вернуть на доработку
+$('m-acc-rework').onclick = async () => {
+  if(!editingRow || !IS_ACCOUNTANT) return;
+  const issue = $('m-acc-issue').value.trim();
+  if(!issue){ alert('Впишите, что нужно исправить.'); $('m-acc-issue').focus(); return; }
+  const patch = {
+    acc_issue: issue,
+    acc_checked: false, acc_checked_by: null, acc_checked_at: null,
+    has_original: $('m-original').value || null,
+  };
+  $('m-acc-rework').disabled = true;
+  const { error } = await sb.from('contract_archive').update(patch).eq('id', editingRow.id);
+  $('m-acc-rework').disabled = false;
+  if(error){ alert('Ошибка: '+error.message); return; }
+  Object.assign(editingRow, patch);
+  await logAudit('update', editingRow, editingRow.id);
+  renderAccBox(editingRow);
+  load();
+};
 
 $('file-drop').onclick = () => $('m-file').click();
 $('m-file').onchange = () => {
@@ -1081,6 +1252,7 @@ $('modal-save').onclick = async () => {
       category: $('m-cat').value,
       pl_direction: $('m-pldir').value || null,
       business_clients: bclients,
+      has_original: $('m-original').value || null,
       signed_date: $('m-signed').value || null,
       valid_until: $('m-until').value || null,
       amount: $('m-amount').value ? Number($('m-amount').value) : null,
@@ -1092,6 +1264,8 @@ $('modal-save').onclick = async () => {
     };
 
     if(editingRow){
+      // данные изменились — проверку нужно повторить (отметка «Проверено» сбрасывается)
+      rec.acc_checked = false; rec.acc_checked_by = null; rec.acc_checked_at = null;
       const oldPath = editingRow.file_path;
       const { error } = await sb.from('contract_archive').update(rec).eq('id', editingRow.id);
       if(error) throw error;
@@ -1122,6 +1296,8 @@ function resetModal(){
   ['m-cp','m-third','m-num','m-title','m-signed','m-until','m-amount','m-tags','m-notes','m-bclients'].forEach(id=>$(id).value='');
   $('m-entity').value=''; $('m-type').value='client'; $('m-cat').value='Склад'; $('m-status').value='active'; $('m-curr').value=''; $('m-pldir').value='';
   $('m-rtype').value='main'; $('m-parent').value=''; $('parent-field').style.display='none';
+  $('m-original').value=''; $('m-acc-issue').value='';
+  renderAccBox(null);
   pickedFile=null; $('m-file').value='';
   $('file-label').innerHTML = `<span class="fn">Выбрать файл</span> &nbsp;·&nbsp; <small>PDF, DOCX, JPG, PNG · до 30 MB</small>`;
   $('m-msg').className='msg';
